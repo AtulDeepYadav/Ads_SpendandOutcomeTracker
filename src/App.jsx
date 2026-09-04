@@ -304,8 +304,11 @@ function RealLedger() {
             <YAxis yAxisId="left" tick={{ fontFamily: "Inter, sans-serif", fontSize: 11, fill: MUTED_TEXT }} axisLine={false} tickLine={false} width={40} />
             <YAxis yAxisId="right" orientation="right" unit="%" tick={{ fontFamily: "Inter, sans-serif", fontSize: 11, fill: MUTED_TEXT }} axisLine={false} tickLine={false} width={40} />
             <Tooltip contentStyle={{ fontFamily: "Inter, sans-serif", fontSize: 12, borderRadius: 6, border: `1px solid ${PAPER_LINE}` }} />
-            <Bar yAxisId="left" dataKey="Ad spend (₹cr)" fill={INK_TEXT} opacity={0.35} radius={[3, 3, 0, 0]} barSize={22} />
-            <Bar yAxisId="left" dataKey="Revenue (₹cr)" fill={MOSS} radius={[3, 3, 0, 0]} barSize={22} />
+            {/* isAnimationActive=false: Recharts' Bar entrance animation miscomputes its end
+                state at narrow container widths (bars render squashed or empty on mobile).
+                Disabling it renders bars directly at their correct final geometry. */}
+            <Bar yAxisId="left" dataKey="Ad spend (₹cr)" fill={INK_TEXT} opacity={0.35} radius={[3, 3, 0, 0]} barSize={22} isAnimationActive={false} />
+            <Bar yAxisId="left" dataKey="Revenue (₹cr)" fill={MOSS} radius={[3, 3, 0, 0]} barSize={22} isAnimationActive={false} />
             <Line yAxisId="right" type="monotone" dataKey="Spend / revenue (%)" stroke={BRICK} strokeWidth={2} dot={{ r: 3 }} />
           </ComposedChart>
         </ResponsiveContainer>
