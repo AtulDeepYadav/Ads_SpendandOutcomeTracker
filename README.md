@@ -23,19 +23,27 @@ reload but never leaves your device.
   period-level "what if ad spend had been ₹X" slider — a single-period linear projection only,
   never a regression across periods (a handful of data points isn't enough to fit a defensible
   response curve), with a visible caveat once the hypothetical deviates >15% from actual.
-- **Campaign Evaluator** — a single-campaign form-to-report flow: enter campaign details,
-  spend by channel (+ optional other costs like creative/agency), outcomes (revenue,
-  impressions, reach, clicks, engagements, conversions, leads), and your own targets (ROAS, max
-  CPA, CTR, conversion rate). Click **Analyse Campaign Performance** for a scored 0–100 verdict
-  (Good / Needs Optimisation / Poor Investment), financial & marketing metric cards, spend-vs-revenue
-  and expense-bifurcation visuals, an outcome funnel, a 4-dimension performance evaluation (Financial
-  Efficiency, Cost Efficiency, Audience Response, Conversion Efficiency), a "what's working / what
-  needs attention" breakdown, a per-channel expense-quality table, and recommendations — all ending
-  in an auto-composed summary paragraph. **The score only ever reflects dimensions where you set a
-  target** — set none, and the app shows raw metrics with no invented "industry standard" score.
+- **Campaign Evaluator** — a single-campaign form-to-report flow: enter campaign details
+  (including a **Campaign Objective** — Sales, Lead Gen, Brand Awareness, Website Traffic,
+  Engagement, or App Installs), spend by channel (+ optional other costs like creative/agency),
+  outcomes (revenue, impressions, reach, clicks, engagements, conversions, leads), and your own
+  targets (ROAS, max CPA, CTR, conversion rate). Click **Analyse Campaign Performance** for a
+  scored 0–100 verdict (Good / Needs Optimisation / Poor Investment), financial & marketing metric
+  cards, spend-vs-revenue and expense-bifurcation visuals, an outcome funnel, a 4-dimension
+  performance evaluation (Financial Efficiency, Cost Efficiency, Audience Response, Conversion
+  Efficiency, each Strong/Average/Weak with a hedged "why this might be happening" hypothesis),
+  a "what's working / what needs attention" breakdown, conditional cross-metric insights (e.g.
+  healthy CTR + weak conversion → points at the landing page, not the ad; comfortably-beaten ROAS
+  target → a scale-gradually suggestion), a per-channel expense-quality table, and recommendations
+  — all ending in an auto-composed summary paragraph.
+  **The objective changes how the score is computed**: each dimension is weighted differently per
+  objective (e.g. Brand Awareness weights Audience Response far more than Financial Efficiency) —
+  a disclosed editorial judgment, shown on-screen, not a claim about your data. Equal weights apply
+  with no objective selected. **The score only ever reflects dimensions where you set a target** —
+  set none, and the app shows raw metrics with no invented "industry standard" score.
   Three illustrative examples are available (a picker, not just one button), deliberately spanning
-  all three verdict bands — D2C beauty (Good, 90/100), B2B SaaS lead gen (Good but mixed across
-  dimensions, 95/100), and a fashion flash sale (Poor, 33/100) — so the scoring engine's full range
+  all three verdict bands — D2C beauty (Good, 94/100), B2B SaaS lead gen (Good but mixed across
+  dimensions, 97/100), and a fashion flash sale (Poor, 30/100) — so the scoring engine's full range
   is visible without you having to hand-craft a failing case yourself.
 - **Modeled Funnel** — model any campaign's funnel (impressions → clicks → conversions →
   CAC/ROAS/LTV:CAC) from your own rate assumptions (spend, CPM, CTR, CVR, AOV, repeat purchases,

@@ -1421,6 +1421,23 @@ const OBJECTIVE_PRIMARY_METRICS = {
   "Engagement": ["engagements"],
   "App Installs": ["conversions"]
 };
+/* A sales campaign and an awareness campaign shouldn't be judged the same way — these weights
+   decide how much each dimension counts toward the overall score, per objective. This is a
+   disclosed editorial judgment about what matters more for a given objective (shown in the UI,
+   never hidden) — not a claim about your data. It's a different kind of decision from the
+   target/benchmark rule elsewhere in this app: no target, no invented "good" threshold; but
+   *which* dimension matters more for an objective is a legitimate call this app can make and
+   explain, the same way a marketer would weigh it in a review meeting. Equal weights (all 1×)
+   apply when no objective is selected, so nothing changes for anyone who skips that field. */
+const OBJECTIVE_WEIGHTS = {
+  "Sales / Revenue": { financial: 1.4, cost: 1.0, audience: 0.6, conversion: 1.2 },
+  "Lead Generation": { financial: 0.6, cost: 1.3, audience: 0.8, conversion: 1.4 },
+  "Brand Awareness": { financial: 0.4, cost: 0.8, audience: 1.6, conversion: 0.4 },
+  "Website Traffic": { financial: 0.5, cost: 1.2, audience: 1.5, conversion: 0.6 },
+  "Engagement": { financial: 0.4, cost: 0.8, audience: 1.6, conversion: 0.6 },
+  "App Installs": { financial: 0.6, cost: 1.2, audience: 0.8, conversion: 1.6 }
+};
+const DEFAULT_DIMENSION_WEIGHTS = { financial: 1, cost: 1, audience: 1, conversion: 1 };
 const OUTCOME_FIELDS = [
   { key: "revenue", label: "Revenue generated (₹)" },
   { key: "impressions", label: "Impressions" },
@@ -1525,39 +1542,69 @@ function computeCampaignMetrics(c) {
   return { mediaSpend, otherCosts, totalCost, revenue, profit, roi, roas, ctr, conversionRate, cpa, cpc, engagementRate, cpl, impressions, reach, clicks, engagements, conversions, leads };
 }
 
+/* Hedged, generic diagnostic hypotheses — "often"/"usually"/"can", never asserted as fact about
+   this specific business. Shown only for Weak/Average dimensions, i.e. only where there's
+   actually something to explain. This is the "why" layer: metric -> interpretation, not just
+   metric -> pass/fail. */
+const WHY_HYPOTHESES = {
+  financial: {
+    weak: "A ROAS below target usually traces back to one of the other three dimensions — high acquisition cost, weak audience response, or a conversion bottleneck — rather than being its own root cause. Check Cost Efficiency and Conversion Efficiency below.",
+    average: "ROAS is close to target but not clearly ahead of it — worth watching before committing more budget."
+  },
+  cost: {
+    weak: "A CPA above target often points to targeting that's too broad, rising competition on the channel, or a conversion bottleneck downstream making each click more expensive to turn into an outcome.",
+    average: "CPA is close to your ceiling — a modest efficiency dip (more competition, a slightly weaker segment) could push it over."
+  },
+  audience: {
+    weak: "A CTR below target usually means the creative, message, or targeting isn't resonating with this audience — rather than a pricing or product issue further down the funnel.",
+    average: "CTR is close to target — small creative or targeting refinements may be enough to clear it."
+  },
+  conversion: {
+    weak: "Traffic not converting at your target rate typically points to the landing page, offer, or checkout experience — not the ad itself, especially if Audience Response (CTR) is healthy.",
+    average: "Conversion rate is close to target — a small friction point somewhere in the funnel may be holding it back."
+  }
+};
+
 function evaluateCampaign(campaign, metrics) {
   const targetRoas = toNumOrNull(campaign.targets.targetRoas);
   const maxCpa = toNumOrNull(campaign.targets.maxCpa);
   const targetCtr = toNumOrNull(campaign.targets.targetCtr);
   const targetConvRate = toNumOrNull(campaign.targets.targetConversionRate);
 
-  function dimension(name, actual, target, higherIsBetter, fmt) {
-    if (actual == null) return { name, score: null, status: "Not evaluated", detail: `Not enough outcome data entered to evaluate ${name.toLowerCase()}.` };
-    if (target == null) return { name, score: null, status: "Not evaluated", detail: `${name}: ${fmt(actual)}. Set a target above to evaluate this dimension.` };
+  function dimension(key, name, actual, target, higherIsBetter, fmt) {
+    if (actual == null) return { key, name, score: null, status: "Not evaluated", detail: `Not enough outcome data entered to evaluate ${name.toLowerCase()}.`, why: null };
+    if (target == null) return { key, name, score: null, status: "Not evaluated", detail: `${name}: ${fmt(actual)}. Set a target above to evaluate this dimension.`, why: null };
     const score = Math.max(0, higherIsBetter ? (actual / target) * 100 : (target / actual) * 100);
     const meets = higherIsBetter ? actual >= target : actual <= target;
-    const status = score >= 100 ? "Strong" : score >= 70 ? "Watch" : "Weak";
+    const status = score >= 100 ? "Strong" : score >= 70 ? "Average" : "Weak";
     const detail = `${fmt(actual)} ${meets ? "meets or exceeds" : "falls short of"} your target of ${fmt(target)}.`;
-    return { name, score, status, detail };
+    const why = status === "Weak" ? WHY_HYPOTHESES[key].weak : status === "Average" ? WHY_HYPOTHESES[key].average : null;
+    return { key, name, score, status, detail, why };
   }
 
   const fmtX = (v) => v.toFixed(2) + "×";
   const fmtRs = (v) => inr(v, { maximumFractionDigits: 2 });
   const fmtPct = (v) => v.toFixed(2) + "%";
 
+  const weights = OBJECTIVE_WEIGHTS[campaign.objective] || DEFAULT_DIMENSION_WEIGHTS;
+  const isWeighted = !!OBJECTIVE_WEIGHTS[campaign.objective];
+
   const dims = [
-    dimension("Financial Efficiency", metrics.roas, targetRoas, true, fmtX),
-    dimension("Cost Efficiency", metrics.cpa, maxCpa, false, fmtRs),
-    dimension("Audience Response", metrics.ctr, targetCtr, true, fmtPct),
-    dimension("Conversion Efficiency", metrics.conversionRate, targetConvRate, true, fmtPct)
-  ];
+    dimension("financial", "Financial Efficiency", metrics.roas, targetRoas, true, fmtX),
+    dimension("cost", "Cost Efficiency", metrics.cpa, maxCpa, false, fmtRs),
+    dimension("audience", "Audience Response", metrics.ctr, targetCtr, true, fmtPct),
+    dimension("conversion", "Conversion Efficiency", metrics.conversionRate, targetConvRate, true, fmtPct)
+  ].map(d => ({ ...d, weight: weights[d.key] }));
 
   const evaluated = dims.filter(d => d.score != null);
-  const overallScore = evaluated.length ? Math.round(evaluated.reduce((s, d) => s + Math.min(d.score, 100), 0) / evaluated.length) : null;
+  const weightSum = evaluated.reduce((s, d) => s + d.weight, 0);
+  const overallScore = evaluated.length
+    ? Math.round(evaluated.reduce((s, d) => s + d.weight * Math.min(d.score, 100), 0) / weightSum)
+    : null;
   const verdict = overallScore == null ? null : overallScore >= 75 ? "Green" : overallScore >= 45 ? "Yellow" : "Red";
   const verdictLabel = verdict === "Green" ? "Good Ad Investment" : verdict === "Yellow" ? "Needs Optimisation" : verdict === "Red" ? "Poor Ad Investment" : null;
 
-  return { dims, overallScore, verdict, verdictLabel, evaluatedCount: evaluated.length };
+  return { dims, overallScore, verdict, verdictLabel, evaluatedCount: evaluated.length, weights, isWeighted, objective: campaign.objective };
 }
 
 function channelConcentrationNote(channels) {
@@ -1569,9 +1616,51 @@ function channelConcentrationNote(channels) {
   return null;
 }
 
-function buildCampaignRecommendations(evaluation, channelAnalysis, concentrationNote) {
+/* Conditional, cross-metric scenarios — richer and more specific than judging each dimension in
+   isolation, but still built only from numbers already computed above (no external benchmarks,
+   no invented thresholds beyond the targets the user set). Each covers 0+ dimension keys so the
+   generic per-dimension "needs attention" bullet below doesn't also restate the same thing. */
+function buildScenarioInsights(metrics, evaluation) {
+  const byKey = Object.fromEntries(evaluation.dims.map(d => [d.key, d]));
+  const insights = [];
+
+  if (byKey.conversion.status === "Weak" && byKey.audience.status !== "Weak" && byKey.audience.status !== "Not evaluated") {
+    insights.push({
+      covers: ["conversion"],
+      text: "High interest, low follow-through: your audience is clicking at a healthy rate but not completing the action once they land — that points at the landing page, offer, or checkout experience rather than the ad itself."
+    });
+  }
+
+  if (byKey.audience.status === "Weak" && metrics.impressions != null && metrics.impressions > 0) {
+    insights.push({
+      covers: ["audience"],
+      text: "Reach without clicks: the ad is being seen but isn't earning clicks at your target rate — before spending more here, revisit the creative, message, or targeting."
+    });
+  }
+
+  if (byKey.cost.status === "Weak") {
+    insights.push({
+      covers: ["cost"],
+      text: "Acquisition cost is running above target — review which channels are driving that in the breakdown below, and consider narrowing targeting rather than broadening spend."
+    });
+  }
+
+  if (byKey.financial.status === "Strong" && byKey.financial.score >= 130) {
+    insights.push({
+      covers: [],
+      text: "ROAS is comfortably ahead of target — a reasonable candidate to scale spend gradually, watching for diminishing returns rather than assuming the same ROAS holds at a much larger budget."
+    });
+  }
+
+  return insights;
+}
+
+function buildCampaignRecommendations(metrics, evaluation, channelAnalysis, concentrationNote) {
   const recs = [];
-  evaluation.dims.filter(d => d.status === "Weak").forEach(d => recs.push(`${d.name} needs attention: ${d.detail}`));
+  const scenarios = buildScenarioInsights(metrics, evaluation);
+  const covered = new Set(scenarios.flatMap(s => s.covers));
+  scenarios.forEach(s => recs.push(s.text));
+  evaluation.dims.filter(d => d.status === "Weak" && !covered.has(d.key)).forEach(d => recs.push(`${d.name} needs attention: ${d.detail}`));
   recs.push(...buildChannelRecommendations(channelAnalysis));
   if (concentrationNote) recs.push(concentrationNote);
   if (!recs.length) {
@@ -1634,15 +1723,31 @@ function MetricCard({ title, rows }) {
   );
 }
 
-function DimensionCard({ dim }) {
-  const color = dim.status === "Strong" ? MOSS : dim.status === "Weak" ? BRICK : dim.status === "Watch" ? AMBER : MUTED_TEXT;
+function DimensionCard({ dim, showWeight }) {
+  const color = dim.status === "Strong" ? MOSS : dim.status === "Weak" ? BRICK : dim.status === "Average" ? AMBER : MUTED_TEXT;
+  const verdictDot = dim.status === "Strong" ? "Green" : dim.status === "Weak" ? "Red" : dim.status === "Average" ? "Yellow" : null;
   return (
     <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
-        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>{dim.name}</div>
-        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color, border: `1px solid ${color}55`, borderRadius: 4, padding: "2px 7px", whiteSpace: "nowrap" }}>{dim.status}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>
+          {dim.name}
+          {showWeight && dim.weight !== 1 && (
+            <span style={{ fontSize: 10, fontWeight: 600, color: MUTED_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 3, padding: "1px 5px" }}>
+              weight {dim.weight}×
+            </span>
+          )}
+        </div>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color, border: `1px solid ${color}55`, borderRadius: 4, padding: "2px 7px", whiteSpace: "nowrap" }}>
+          {verdictDot && <Dot verdict={verdictDot} size={6} />}
+          {dim.status}
+        </span>
       </div>
       <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT, lineHeight: 1.6 }}>{dim.detail}</div>
+      {dim.why && (
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, lineHeight: 1.6, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${PAPER_LINE}` }}>
+          <strong style={{ color: INK_TEXT }}>Why: </strong>{dim.why}
+        </div>
+      )}
     </div>
   );
 }
@@ -1828,11 +1933,11 @@ function CampaignReport({ campaign, onEdit, onReset }) {
   const evaluation = useMemo(() => evaluateCampaign(campaign, metrics), [campaign, metrics]);
   const channelAnalysis = useMemo(() => analyzeChannels(campaign.channels), [campaign.channels]);
   const concentrationNote = channelConcentrationNote(campaign.channels);
-  const recommendations = buildCampaignRecommendations(evaluation, channelAnalysis, concentrationNote);
+  const recommendations = buildCampaignRecommendations(metrics, evaluation, channelAnalysis, concentrationNote);
   const summary = campaignSummary(evaluation, channelAnalysis);
 
   const strongDims = evaluation.dims.filter(d => d.status === "Strong");
-  const weakDims = evaluation.dims.filter(d => d.status === "Weak" || d.status === "Watch");
+  const weakDims = evaluation.dims.filter(d => d.status === "Weak" || d.status === "Average");
 
   return (
     <div>
@@ -1862,6 +1967,11 @@ function CampaignReport({ campaign, onEdit, onReset }) {
             <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, color: MUTED_TEXT, marginTop: 8 }}>
               Campaign Performance Score: <strong style={{ color: INK_TEXT }}>{evaluation.overallScore}/100</strong> (across {evaluation.evaluatedCount} target{evaluation.evaluatedCount === 1 ? "" : "s"} you set)
             </div>
+            {evaluation.isWeighted && (
+              <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginTop: 6 }}>
+                Weighted for a {evaluation.objective} objective — Financial ×{evaluation.weights.financial}, Cost ×{evaluation.weights.cost}, Audience ×{evaluation.weights.audience}, Conversion ×{evaluation.weights.conversion} (equal weights apply with no objective set).
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -1913,7 +2023,7 @@ function CampaignReport({ campaign, onEdit, onReset }) {
       <div style={{ marginBottom: 8 }}>
         <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 700, color: MUTED_TEXT, marginBottom: 10, letterSpacing: "0.02em" }}>PERFORMANCE EVALUATION</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-          {evaluation.dims.map(d => <DimensionCard key={d.name} dim={d} />)}
+          {evaluation.dims.map(d => <DimensionCard key={d.name} dim={d} showWeight={evaluation.isWeighted} />)}
         </div>
       </div>
 
