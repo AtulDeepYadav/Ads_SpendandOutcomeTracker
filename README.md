@@ -8,7 +8,7 @@ JSON) — or load the built-in Honasa Consumer (Mamaearth's parent company) work
 it running end to end. Data you enter is saved to your browser's local storage, so it survives a
 reload but never leaves your device.
 
-## Two tabs
+## Three tabs
 
 - **Real Ledger** — add any number of periods (ad spend & revenue this period vs. the same period
   a year earlier, plus optional profit and secondary-metric fields), and each is scored on up to 5
@@ -23,14 +23,26 @@ reload but never leaves your device.
   period-level "what if ad spend had been ₹X" slider — a single-period linear projection only,
   never a regression across periods (a handful of data points isn't enough to fit a defensible
   response curve), with a visible caveat once the hypothetical deviates >15% from actual.
+- **Campaign Evaluator** — a single-campaign form-to-report flow: enter campaign details,
+  spend by channel (+ optional other costs like creative/agency), outcomes (revenue,
+  impressions, reach, clicks, engagements, conversions, leads), and your own targets (ROAS, max
+  CPA, CTR, conversion rate). Click **Analyse Campaign Performance** for a scored 0–100 verdict
+  (Good / Needs Optimisation / Poor Investment), financial & marketing metric cards, spend-vs-revenue
+  and expense-bifurcation visuals, an outcome funnel, a 4-dimension performance evaluation (Financial
+  Efficiency, Cost Efficiency, Audience Response, Conversion Efficiency), a "what's working / what
+  needs attention" breakdown, a per-channel expense-quality table, and recommendations — all ending
+  in an auto-composed summary paragraph. **The score only ever reflects dimensions where you set a
+  target** — set none, and the app shows raw metrics with no invented "industry standard" score.
 - **Modeled Funnel** — model any campaign's funnel (impressions → clicks → conversions →
   CAC/ROAS/LTV:CAC) from your own rate assumptions (spend, CPM, CTR, CVR, AOV, repeat purchases,
   customer lifetime) — every downstream metric recomputes live. Optionally flag the gross margin
   figure as real disclosed data rather than a seeded assumption, with a note on its source.
 
-Both tabs have a **"Load Honasa example"** button that fills in the real, sourced Honasa Consumer
-data used to build and test this tool (see in-app citations), and the Real Ledger tab's checks
-A–E and verdict logic are unchanged from that original build.
+All three tabs have a **"Load Honasa / illustrative example"** button. Real Ledger's and Modeled
+Funnel's examples use real, sourced Honasa Consumer disclosures (see in-app citations); Honasa
+doesn't disclose campaign- or channel-level figures, so the Campaign Evaluator's example uses
+clearly-labeled seeded numbers instead, in the same spirit as the Modeled Funnel tab. The Real
+Ledger tab's checks A–E and verdict logic are unchanged from the original build.
 
 ## Run it
 

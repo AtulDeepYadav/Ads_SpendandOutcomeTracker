@@ -41,6 +41,10 @@ const btnSecondaryDark = {
   fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: ON_DARK,
   background: "transparent", border: `1px solid ${SLATE_LINE}`, borderRadius: 6, padding: "8px 14px", cursor: "pointer"
 };
+const lightInputStyle = {
+  fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT,
+  border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff"
+};
 
 /* ---------- localStorage persistence (per-viewer only; nothing leaves the browser) ---------- */
 const LS_PREFIX = "adspend-tracker:";
@@ -60,7 +64,9 @@ const LS_KEYS = {
   funnelDesc: "funnel.description",
   funnelAssumptions: "funnel.assumptions",
   funnelGmReal: "funnel.gmReal",
-  funnelGmNote: "funnel.gmNote"
+  funnelGmNote: "funnel.gmNote",
+  evaluatorCampaign: "evaluator.campaign",
+  evaluatorShowResults: "evaluator.showResults"
 };
 
 /* ---------- Honasa Consumer worked example (loadable, not baked in) ---------- */
@@ -217,7 +223,7 @@ function computeChecks(q, categoryGrowthEstimate) {
 
 /* ---------- Formatting helpers ---------- */
 const inr = (n, opts = {}) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0, ...opts });
-const inrShort = (n) => `₹${Number(n).toFixed(0)}`;
+const inrShort = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 /* ---------- Import parsing (CSV or JSON) ---------- */
 function toNumOrNull(v) {
@@ -756,7 +762,7 @@ function ChannelForm({ initialChannel, onSave, onCancel }) {
 const thStyle = { textAlign: "left", padding: "6px 10px", fontFamily: "Inter, sans-serif", fontWeight: 600, color: MUTED_TEXT, fontSize: 11 };
 const tdStyle = { padding: "8px 10px", fontFamily: "Inter, sans-serif", color: INK_TEXT, whiteSpace: "nowrap", fontSize: 12 };
 
-function ChannelWhatIfSlider({ channel }) {
+function ChannelWhatIfSlider({ channel, contextNoun = "period" }) {
   const [hypSpend, setHypSpend] = useState(channel.spend);
   const stats = computeChannelStats(channel);
   const projectedRevenue = stats.roas != null ? hypSpend * stats.roas : null;
@@ -791,15 +797,14 @@ function ChannelWhatIfSlider({ channel }) {
         fontFamily: "Inter, sans-serif", fontSize: 12, color: INK_TEXT, lineHeight: 1.6
       }}>
         This assumes {channel.name}'s current ROAS holds at the margin as spend changes — a constant-ROAS
-        projection, not a fitted model. It's weaker evidence than the period-level what-if above, since it's
-        based on one spend/revenue snapshot for this channel rather than an observed change over time, and it
-        ignores diminishing returns entirely.
+        projection, not a fitted model{contextNoun === "period" ? ", and it's weaker evidence than the period-level what-if above, since it's based on one spend/revenue snapshot for this channel rather than an observed change over time" : ""}.
+        It ignores diminishing returns entirely.
       </div>
     </div>
   );
 }
 
-function ChannelWhatIf({ channels }) {
+function ChannelWhatIf({ channels, contextNoun = "period" }) {
   const eligible = channels.filter(c => c.stats.roas != null);
   const [selectedId, setSelectedId] = useState(eligible[0]?.id ?? null);
   if (!eligible.length) return null;
@@ -820,12 +825,12 @@ function ChannelWhatIf({ channels }) {
       <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 14 }}>
         A reallocation what-if for one channel — see caveat below.
       </div>
-      <ChannelWhatIfSlider key={channel.id} channel={channel} />
+      <ChannelWhatIfSlider key={channel.id} channel={channel} contextNoun={contextNoun} />
     </div>
   );
 }
 
-function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
+function ChannelSection({ channels, onAdd, onUpdate, onDelete, contextNoun = "period", readOnly = false }) {
   const [mode, setMode] = useState(null); // null | "add" | "edit"
   const [editId, setEditId] = useState(null);
   const analysis = useMemo(() => analyzeChannels(channels), [channels]);
@@ -835,18 +840,18 @@ function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
     <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 24, marginTop: 22 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT }}>Channel breakdown</div>
-        <button onClick={() => { setMode("add"); setEditId(null); }} style={btnGhostSmall}>+ Add channel</button>
+        {!readOnly && <button onClick={() => { setMode("add"); setEditId(null); }} style={btnGhostSmall}>+ Add channel</button>}
       </div>
 
-      {channels.length === 0 && mode === null && (
+      {channels.length === 0 && mode === null && !readOnly && (
         <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, lineHeight: 1.6 }}>
-          Optional — break this period's spend down by channel (Meta, Google, YouTube, etc.) to see which channel
-          is driving or dragging performance, with a diagnosis, recommendations, and a channel-level what-if.
+          Optional — break this {contextNoun}'s spend down by channel (Meta, Google, YouTube, etc.) to see which
+          channel is driving or dragging performance, with a diagnosis, recommendations, and a channel-level what-if.
         </div>
       )}
 
-      {mode === "add" && <ChannelForm onSave={(ch) => { onAdd(ch); setMode(null); }} onCancel={() => setMode(null)} />}
-      {mode === "edit" && editingChannel && <ChannelForm initialChannel={editingChannel} onSave={(ch) => { onUpdate(ch); setMode(null); }} onCancel={() => setMode(null)} />}
+      {!readOnly && mode === "add" && <ChannelForm onSave={(ch) => { onAdd(ch); setMode(null); }} onCancel={() => setMode(null)} />}
+      {!readOnly && mode === "edit" && editingChannel && <ChannelForm initialChannel={editingChannel} onSave={(ch) => { onUpdate(ch); setMode(null); }} onCancel={() => setMode(null)} />}
 
       {channels.length > 0 && (
         <>
@@ -861,7 +866,7 @@ function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
                   <th style={thStyle}>CTR</th>
                   <th style={thStyle}>CVR</th>
                   <th style={thStyle}>CPA</th>
-                  <th style={thStyle}></th>
+                  {!readOnly && <th style={thStyle}></th>}
                 </tr>
               </thead>
               <tbody>
@@ -879,10 +884,12 @@ function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
                     <td style={tdStyle}>{ch.stats.ctr != null ? ch.stats.ctr.toFixed(2) + "%" : "—"}</td>
                     <td style={tdStyle}>{ch.stats.cvr != null ? ch.stats.cvr.toFixed(2) + "%" : "—"}</td>
                     <td style={tdStyle}>{ch.stats.cpa != null ? inr(ch.stats.cpa, { maximumFractionDigits: 2 }) : "—"}</td>
-                    <td style={tdStyle}>
-                      <button onClick={() => { setMode("edit"); setEditId(ch.id); }} style={{ ...btnGhostSmall, marginRight: 6 }}>Edit</button>
-                      <button onClick={() => onDelete(ch.id)} style={{ ...btnGhostSmall, color: BRICK, borderColor: `${BRICK}55` }}>Delete</button>
-                    </td>
+                    {!readOnly && (
+                      <td style={tdStyle}>
+                        <button onClick={() => { setMode("edit"); setEditId(ch.id); }} style={{ ...btnGhostSmall, marginRight: 6 }}>Edit</button>
+                        <button onClick={() => onDelete(ch.id)} style={{ ...btnGhostSmall, color: BRICK, borderColor: `${BRICK}55` }}>Delete</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -917,7 +924,7 @@ function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
             ))}
           </div>
 
-          <ChannelWhatIf channels={analysis.enriched} />
+          <ChannelWhatIf channels={analysis.enriched} contextNoun={contextNoun} />
         </>
       )}
     </div>
@@ -1361,14 +1368,586 @@ function ModeledFunnel() {
   );
 }
 
+/* ---------- Campaign Evaluator tab — single-campaign form -> scored report ----------
+   Design rule carried over from the rest of this app: the 0-100 score and Green/Yellow/Red
+   verdict are computed ONLY from dimensions where the user set their own target (ROAS, max
+   CPA, target CTR, target conversion rate). No target set anywhere = no score shown, rather
+   than falling back to an invented "industry standard" threshold. */
+
+const INDUSTRY_OPTIONS = ["Beauty & Personal Care", "Fashion & Apparel", "Food & Beverage", "Electronics", "Travel", "Financial Services", "Education", "Healthcare", "Other"];
+const OBJECTIVE_OPTIONS = ["Sales / Revenue", "Lead Generation", "Brand Awareness", "Website Traffic", "Engagement", "App Installs"];
+const OBJECTIVE_PRIMARY_METRICS = {
+  "Sales / Revenue": ["revenue", "conversions"],
+  "Lead Generation": ["leads", "conversions"],
+  "Brand Awareness": ["reach", "impressions"],
+  "Website Traffic": ["clicks", "impressions"],
+  "Engagement": ["engagements"],
+  "App Installs": ["conversions"]
+};
+const OUTCOME_FIELDS = [
+  { key: "revenue", label: "Revenue generated (₹)" },
+  { key: "impressions", label: "Impressions" },
+  { key: "reach", label: "Reach" },
+  { key: "clicks", label: "Clicks" },
+  { key: "engagements", label: "Engagements" },
+  { key: "conversions", label: "Conversions" },
+  { key: "leads", label: "Leads" }
+];
+
+const BLANK_CAMPAIGN = {
+  brandName: "", campaignName: "", industry: "", objective: "", durationDays: "", targetAudience: "",
+  channels: [], otherExpenses: [],
+  outcomes: { revenue: "", impressions: "", reach: "", clicks: "", engagements: "", conversions: "", leads: "" },
+  targets: { targetRoas: "", maxCpa: "", targetCtr: "", targetConversionRate: "" }
+};
+
+/* Illustrative example — seeded numbers for demo purposes, NOT Honasa's real disclosed data
+   (Honasa doesn't disclose campaign- or channel-level spend/outcome figures anywhere this
+   project could source; see the Modeled Funnel tab for the same caveat). */
+const CAMPAIGN_EVALUATOR_EXAMPLE = {
+  brandName: "Honasa Consumer (illustrative)", campaignName: "Derma Co. — Summer Serum Launch",
+  industry: "Beauty & Personal Care", objective: "Sales / Revenue", durationDays: "30",
+  targetAudience: "Women 25–40, urban India",
+  channels: [
+    { id: "ex-meta", name: "Meta Ads", spend: 45000, revenue: 220000, impressions: 120000, clicks: 4200, conversions: 140 },
+    { id: "ex-google", name: "Google Ads", spend: 30000, revenue: 130000, impressions: 70000, clicks: 1750, conversions: 80 },
+    { id: "ex-youtube", name: "YouTube Ads", spend: 25000, revenue: 50000, impressions: 250000, clicks: 1750, conversions: 32 }
+  ],
+  otherExpenses: [
+    { id: "ex-creative", name: "Creative Production", amount: 12000 },
+    { id: "ex-agency", name: "Agency Fees", amount: 8000 }
+  ],
+  outcomes: { revenue: 400000, impressions: 440000, reach: 300000, clicks: 7700, engagements: 20000, conversions: 252, leads: "" },
+  targets: { targetRoas: 3, maxCpa: 500, targetCtr: 3, targetConversionRate: 3 }
+};
+
+function computeCampaignMetrics(c) {
+  const mediaSpend = c.channels.reduce((s, ch) => s + (Number(ch.spend) || 0), 0);
+  const otherCosts = c.otherExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const totalCost = mediaSpend + otherCosts;
+  const revenue = toNumOrNull(c.outcomes.revenue);
+  const impressions = toNumOrNull(c.outcomes.impressions);
+  const reach = toNumOrNull(c.outcomes.reach);
+  const clicks = toNumOrNull(c.outcomes.clicks);
+  const engagements = toNumOrNull(c.outcomes.engagements);
+  const conversions = toNumOrNull(c.outcomes.conversions);
+  const leads = toNumOrNull(c.outcomes.leads);
+
+  const roas = (revenue != null && mediaSpend > 0) ? revenue / mediaSpend : null;
+  const profit = (revenue != null) ? revenue - totalCost : null;
+  const roi = (profit != null && totalCost > 0) ? (profit / totalCost) * 100 : null;
+  const ctr = (clicks != null && impressions > 0) ? (clicks / impressions) * 100 : null;
+  const conversionRate = (conversions != null && clicks > 0) ? (conversions / clicks) * 100 : null;
+  const cpa = (conversions != null && conversions > 0 && mediaSpend > 0) ? mediaSpend / conversions : null;
+  const cpc = (clicks != null && clicks > 0 && mediaSpend > 0) ? mediaSpend / clicks : null;
+  const engagementRate = (engagements != null && impressions > 0) ? (engagements / impressions) * 100 : null;
+  const cpl = (leads != null && leads > 0 && mediaSpend > 0) ? mediaSpend / leads : null;
+
+  return { mediaSpend, otherCosts, totalCost, revenue, profit, roi, roas, ctr, conversionRate, cpa, cpc, engagementRate, cpl, impressions, reach, clicks, engagements, conversions, leads };
+}
+
+function evaluateCampaign(campaign, metrics) {
+  const targetRoas = toNumOrNull(campaign.targets.targetRoas);
+  const maxCpa = toNumOrNull(campaign.targets.maxCpa);
+  const targetCtr = toNumOrNull(campaign.targets.targetCtr);
+  const targetConvRate = toNumOrNull(campaign.targets.targetConversionRate);
+
+  function dimension(name, actual, target, higherIsBetter, fmt) {
+    if (actual == null) return { name, score: null, status: "Not evaluated", detail: `Not enough outcome data entered to evaluate ${name.toLowerCase()}.` };
+    if (target == null) return { name, score: null, status: "Not evaluated", detail: `${name}: ${fmt(actual)}. Set a target above to evaluate this dimension.` };
+    const score = Math.max(0, higherIsBetter ? (actual / target) * 100 : (target / actual) * 100);
+    const meets = higherIsBetter ? actual >= target : actual <= target;
+    const status = score >= 100 ? "Strong" : score >= 70 ? "Watch" : "Weak";
+    const detail = `${fmt(actual)} ${meets ? "meets or exceeds" : "falls short of"} your target of ${fmt(target)}.`;
+    return { name, score, status, detail };
+  }
+
+  const fmtX = (v) => v.toFixed(2) + "×";
+  const fmtRs = (v) => inr(v, { maximumFractionDigits: 2 });
+  const fmtPct = (v) => v.toFixed(2) + "%";
+
+  const dims = [
+    dimension("Financial Efficiency", metrics.roas, targetRoas, true, fmtX),
+    dimension("Cost Efficiency", metrics.cpa, maxCpa, false, fmtRs),
+    dimension("Audience Response", metrics.ctr, targetCtr, true, fmtPct),
+    dimension("Conversion Efficiency", metrics.conversionRate, targetConvRate, true, fmtPct)
+  ];
+
+  const evaluated = dims.filter(d => d.score != null);
+  const overallScore = evaluated.length ? Math.round(evaluated.reduce((s, d) => s + Math.min(d.score, 100), 0) / evaluated.length) : null;
+  const verdict = overallScore == null ? null : overallScore >= 75 ? "Green" : overallScore >= 45 ? "Yellow" : "Red";
+  const verdictLabel = verdict === "Green" ? "Good Ad Investment" : verdict === "Yellow" ? "Needs Optimisation" : verdict === "Red" ? "Poor Ad Investment" : null;
+
+  return { dims, overallScore, verdict, verdictLabel, evaluatedCount: evaluated.length };
+}
+
+function channelConcentrationNote(channels) {
+  const totalSpend = channels.reduce((s, c) => s + (Number(c.spend) || 0), 0);
+  if (!totalSpend || channels.length < 2) return null;
+  const top = [...channels].sort((a, b) => b.spend - a.spend)[0];
+  const share = (top.spend / totalSpend) * 100;
+  if (share > 60) return `${top.name} accounts for ${share.toFixed(0)}% of total ad spend, increasing channel-concentration risk.`;
+  return null;
+}
+
+function buildCampaignRecommendations(evaluation, channelAnalysis, concentrationNote) {
+  const recs = [];
+  evaluation.dims.filter(d => d.status === "Weak").forEach(d => recs.push(`${d.name} needs attention: ${d.detail}`));
+  recs.push(...buildChannelRecommendations(channelAnalysis));
+  if (concentrationNote) recs.push(concentrationNote);
+  if (!recs.length) {
+    recs.push(evaluation.evaluatedCount === 0
+      ? "Set at least one target above (ROAS, max CPA, CTR, or conversion rate) to get a scored evaluation and tailored recommendations."
+      : "No specific concerns flagged — performance is meeting or exceeding the targets you set.");
+  }
+  return recs;
+}
+
+function campaignSummary(evaluation, channelAnalysis) {
+  if (evaluation.overallScore == null) {
+    return "Set at least one target (ROAS, max CPA, CTR, or conversion rate) above to get a scored verdict and summary.";
+  }
+  const strong = evaluation.dims.filter(d => d.status === "Strong").map(d => d.name);
+  const weak = evaluation.dims.filter(d => d.status === "Weak").map(d => d.name);
+  let s = `This campaign scored ${evaluation.overallScore}/100 across the ${evaluation.evaluatedCount} dimension${evaluation.evaluatedCount === 1 ? "" : "s"} you set targets for — a "${evaluation.verdictLabel}" verdict.`;
+  if (strong.length) s += ` ${strong.join(" and ")} ${strong.length > 1 ? "are" : "is"} meeting or exceeding target.`;
+  if (weak.length) s += ` ${weak.join(" and ")} ${weak.length > 1 ? "need" : "needs"} attention.`;
+  const weakestCh = channelAnalysis.enriched.find(c => c.flag === "weakest");
+  const strongestCh = channelAnalysis.enriched.find(c => c.flag === "strongest");
+  if (weakestCh && strongestCh) s += ` Among channels, ${strongestCh.name} is the strongest performer and ${weakestCh.name} the weakest — worth considering for reallocation.`;
+  return s;
+}
+
+function LightSelect({ label, value, onChange, options }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT }}>{label}</span>
+      <select value={value} onChange={onChange}
+        style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }}>
+        <option value="">— Select —</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </label>
+  );
+}
+
+function SectionCard({ title, note, children }) {
+  return (
+    <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 20, marginBottom: 18 }}>
+      <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT, marginBottom: note ? 6 : 14 }}>{title}</div>
+      {note && <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 14, lineHeight: 1.6 }}>{note}</div>}
+      {children}
+    </div>
+  );
+}
+
+function MetricCard({ title, rows }) {
+  return (
+    <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 18 }}>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 700, color: MUTED_TEXT, marginBottom: 12, letterSpacing: "0.02em" }}>{title.toUpperCase()}</div>
+      {rows.map(([label, val]) => (
+        <div key={label} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${PAPER_LINE}`, fontFamily: "Inter, sans-serif", fontSize: 13 }}>
+          <span style={{ color: MUTED_TEXT }}>{label}</span>
+          <span style={{ color: INK_TEXT, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{val}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DimensionCard({ dim }) {
+  const color = dim.status === "Strong" ? MOSS : dim.status === "Weak" ? BRICK : dim.status === "Watch" ? AMBER : MUTED_TEXT;
+  return (
+    <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 16 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>{dim.name}</div>
+        <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 600, color, border: `1px solid ${color}55`, borderRadius: 4, padding: "2px 7px", whiteSpace: "nowrap" }}>{dim.status}</span>
+      </div>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT, lineHeight: 1.6 }}>{dim.detail}</div>
+    </div>
+  );
+}
+
+function TwoBarCompare({ items }) {
+  const max = Math.max(...items.map(i => i.value || 0), 1);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {items.map(i => (
+        <div key={i.label}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 4 }}>
+            <span>{i.label}</span><span style={{ fontWeight: 600, color: INK_TEXT }}>{inrShort(i.value)}</span>
+          </div>
+          <div style={{ height: 22, borderRadius: 4, background: i.color, width: `${Math.max(4, (i.value / max) * 100)}%`, transition: "width 0.15s" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExpenseBifurcation({ channels, otherExpenses }) {
+  const rows = [
+    ...channels.map(c => ({ label: c.name, value: Number(c.spend) || 0 })),
+    ...otherExpenses.map(e => ({ label: e.name, value: e.amount }))
+  ];
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  if (!total) return <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT }}>No spend entered yet.</div>;
+  const sorted = [...rows].sort((a, b) => b.value - a.value);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {sorted.map(r => (
+        <div key={r.label}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 4 }}>
+            <span>{r.label}</span><span>{((r.value / total) * 100).toFixed(0)}% · {inrShort(r.value)}</span>
+          </div>
+          <div style={{ height: 10, borderRadius: 4, background: PAPER_LINE, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${(r.value / total) * 100}%`, background: AMBER }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function OutcomeFunnelBars({ impressions, clicks, conversions, revenue }) {
+  const stages = [
+    { name: "Impressions", value: impressions },
+    { name: "Clicks", value: clicks },
+    { name: "Conversions", value: conversions }
+  ].filter(s => s.value != null && s.value > 0);
+  if (stages.length < 2) {
+    return <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT }}>Enter at least impressions and clicks (or clicks and conversions) to see the funnel.</div>;
+  }
+  const max = stages[0].value || 1;
+  return (
+    <div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {stages.map(s => (
+          <div key={s.name} style={{
+            width: `${Math.max(12, (s.value / max) * 100)}%`, background: "#fff", border: `1px solid ${PAPER_LINE}`,
+            borderRadius: 6, padding: "10px 14px", display: "flex", justifyContent: "space-between", minWidth: 160
+          }}>
+            <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT }}>{s.name}</span>
+            <span style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT }}>{Math.round(s.value).toLocaleString("en-IN")}</span>
+          </div>
+        ))}
+      </div>
+      {revenue != null && (
+        <div style={{ marginTop: 8, fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT }}>
+          → generating <strong style={{ color: INK_TEXT }}>{inrShort(revenue)}</strong> in revenue
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CampaignForm({ campaign, setCampaign, onAnalyse, onLoadExample }) {
+  const set = (key) => (e) => setCampaign(prev => ({ ...prev, [key]: e.target.value }));
+  const setOutcome = (key) => (e) => setCampaign(prev => ({ ...prev, outcomes: { ...prev.outcomes, [key]: e.target.value } }));
+  const setTarget = (key) => (e) => setCampaign(prev => ({ ...prev, targets: { ...prev.targets, [key]: e.target.value } }));
+
+  function handleAddChannel(ch) { setCampaign(prev => ({ ...prev, channels: [...prev.channels, ch] })); }
+  function handleUpdateChannel(ch) { setCampaign(prev => ({ ...prev, channels: prev.channels.map(c => c.id === ch.id ? ch : c) })); }
+  function handleDeleteChannel(id) {
+    if (!window.confirm("Remove this channel? This can't be undone.")) return;
+    setCampaign(prev => ({ ...prev, channels: prev.channels.filter(c => c.id !== id) }));
+  }
+
+  const [expenseName, setExpenseName] = useState("");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  function handleAddExpense() {
+    const amt = Number(expenseAmount);
+    if (!expenseName.trim() || !Number.isFinite(amt) || amt <= 0) return;
+    setCampaign(prev => ({ ...prev, otherExpenses: [...prev.otherExpenses, { id: `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name: expenseName.trim(), amount: amt }] }));
+    setExpenseName(""); setExpenseAmount("");
+  }
+  function handleDeleteExpense(id) {
+    setCampaign(prev => ({ ...prev, otherExpenses: prev.otherExpenses.filter(e => e.id !== id) }));
+  }
+
+  const primaryMetrics = OBJECTIVE_PRIMARY_METRICS[campaign.objective] || [];
+
+  return (
+    <div>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT, marginBottom: 20, maxWidth: 640, lineHeight: 1.6 }}>
+        Enter one campaign's details, spend, and outcomes below, then click <strong>Analyse Campaign Performance</strong>
+        for a scored verdict, a diagnosis of what's working and what isn't, and recommendations.
+      </div>
+
+      <SectionCard title="Campaign details">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+          <LightField label="Brand name" value={campaign.brandName} onChange={set("brandName")} />
+          <LightField label="Campaign name" value={campaign.campaignName} onChange={set("campaignName")} />
+          <LightSelect label="Industry" value={campaign.industry} onChange={set("industry")} options={INDUSTRY_OPTIONS} />
+          <LightSelect label="Campaign objective" value={campaign.objective} onChange={set("objective")} options={OBJECTIVE_OPTIONS} />
+          <LightField label="Campaign duration (days)" type="number" value={campaign.durationDays} onChange={set("durationDays")} />
+          <LightField label="Target audience (optional)" value={campaign.targetAudience} onChange={set("targetAudience")} placeholder="e.g. Women 25–40, urban India" />
+        </div>
+      </SectionCard>
+
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT, marginBottom: 6 }}>Ad spend by channel</div>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 10, lineHeight: 1.6 }}>
+          Each channel can optionally include the revenue and conversions it drove, so per-channel efficiency can be
+          judged later. Costs that aren't tied to a channel (creative, agency, tools) go in "Other campaign costs" below.
+        </div>
+        <ChannelSection channels={campaign.channels} onAdd={handleAddChannel} onUpdate={handleUpdateChannel} onDelete={handleDeleteChannel} contextNoun="campaign" />
+      </div>
+
+      <SectionCard title="Other campaign costs (optional)" note="Creative production, agency fees, tools — costs that support the campaign but aren't tied to a specific channel's outcomes.">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input placeholder="e.g. Creative production" value={expenseName} onChange={e => setExpenseName(e.target.value)} style={{ ...lightInputStyle, flex: 2, minWidth: 160 }} />
+          <input placeholder="Amount" type="number" value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)} style={{ ...lightInputStyle, flex: 1, minWidth: 100 }} />
+          <button onClick={handleAddExpense} style={btnSecondary}>+ Add</button>
+        </div>
+        {campaign.otherExpenses.length > 0 && (
+          <div>
+            {campaign.otherExpenses.map(e => (
+              <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${PAPER_LINE}`, fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT }}>
+                <span>{e.name}</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {inrShort(e.amount)}
+                  <button onClick={() => handleDeleteExpense(e.id)} style={{ ...btnGhostSmall, color: BRICK, borderColor: `${BRICK}55` }}>Delete</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Campaign outcomes" note="All optional — fill in whichever you have. Fields marked ★ are the primary metrics for the objective you selected above.">
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+          {OUTCOME_FIELDS.map(f => (
+            <LightField key={f.key} label={f.label + (primaryMetrics.includes(f.key) ? " ★" : "")} type="number"
+              value={campaign.outcomes[f.key]} onChange={setOutcome(f.key)} />
+          ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Targets (optional, but recommended)" note='Without a target, "good" vs "bad" has no fixed reference point — the scored verdict on the next screen only covers dimensions where you set one here.'>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+          <LightField label="Target ROAS (×)" type="number" value={campaign.targets.targetRoas} onChange={setTarget("targetRoas")} placeholder="e.g. 3" />
+          <LightField label="Maximum CPA (₹)" type="number" value={campaign.targets.maxCpa} onChange={setTarget("maxCpa")} placeholder="e.g. 500" />
+          <LightField label="Target CTR (%)" type="number" value={campaign.targets.targetCtr} onChange={setTarget("targetCtr")} placeholder="e.g. 2" />
+          <LightField label="Target conversion rate (%)" type="number" value={campaign.targets.targetConversionRate} onChange={setTarget("targetConversionRate")} placeholder="e.g. 4" />
+        </div>
+      </SectionCard>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={onAnalyse} style={{ ...btnPrimary, fontSize: 14, padding: "12px 22px" }}>Analyse Campaign Performance</button>
+        <button onClick={onLoadExample} style={btnSecondary}>Load illustrative example</button>
+      </div>
+    </div>
+  );
+}
+
+function CampaignReport({ campaign, onEdit, onReset }) {
+  const metrics = useMemo(() => computeCampaignMetrics(campaign), [campaign]);
+  const evaluation = useMemo(() => evaluateCampaign(campaign, metrics), [campaign, metrics]);
+  const channelAnalysis = useMemo(() => analyzeChannels(campaign.channels), [campaign.channels]);
+  const concentrationNote = channelConcentrationNote(campaign.channels);
+  const recommendations = buildCampaignRecommendations(evaluation, channelAnalysis, concentrationNote);
+  const summary = campaignSummary(evaluation, channelAnalysis);
+
+  const strongDims = evaluation.dims.filter(d => d.status === "Strong");
+  const weakDims = evaluation.dims.filter(d => d.status === "Weak" || d.status === "Watch");
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
+        <div>
+          {(campaign.brandName || campaign.campaignName) && (
+            <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 20, fontWeight: 600, color: INK_TEXT }}>
+              {[campaign.brandName, campaign.campaignName].filter(Boolean).join(" — ")}
+            </div>
+          )}
+          {campaign.objective && <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT }}>{campaign.objective}{campaign.durationDays ? ` · ${campaign.durationDays} days` : ""}</div>}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onEdit} style={btnSecondary}>← Edit inputs</button>
+          <button onClick={onReset} style={btnDanger}>Start over</button>
+        </div>
+      </div>
+
+      {/* 1. Overall verdict */}
+      <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 28, marginBottom: 20, textAlign: "center" }}>
+        {evaluation.overallScore != null ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Dot verdict={evaluation.verdict} size={14} />
+              <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 26, fontWeight: 700, color: VERDICT_COLOR[evaluation.verdict] }}>{evaluation.verdictLabel}</div>
+            </div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 14, color: MUTED_TEXT, marginTop: 8 }}>
+              Campaign Performance Score: <strong style={{ color: INK_TEXT }}>{evaluation.overallScore}/100</strong> (across {evaluation.evaluatedCount} target{evaluation.evaluatedCount === 1 ? "" : "s"} you set)
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 22, fontWeight: 700, color: INK_TEXT }}>No score yet</div>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT, marginTop: 6 }}>
+              Go back and set at least one target (ROAS, max CPA, CTR, or conversion rate) to get a scored verdict.
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 2. Key metrics */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 22 }}>
+        <MetricCard title="Financial performance" rows={[
+          ["Total ad spend", inrShort(metrics.mediaSpend)],
+          ["Total campaign cost", inrShort(metrics.totalCost)],
+          ["Revenue generated", metrics.revenue != null ? inrShort(metrics.revenue) : "—"],
+          ["Profit contribution", metrics.profit != null ? inrShort(metrics.profit) : "—"],
+          ["ROAS", metrics.roas != null ? metrics.roas.toFixed(2) + "×" : "—"],
+          ["ROI", metrics.roi != null ? metrics.roi.toFixed(0) + "%" : "—"]
+        ]} />
+        <MetricCard title="Marketing performance" rows={[
+          ["CTR", metrics.ctr != null ? metrics.ctr.toFixed(2) + "%" : "—"],
+          ["Conversion rate", metrics.conversionRate != null ? metrics.conversionRate.toFixed(2) + "%" : "—"],
+          ["CPA", metrics.cpa != null ? inr(metrics.cpa, { maximumFractionDigits: 2 }) : "—"],
+          ["CPC", metrics.cpc != null ? inr(metrics.cpc, { maximumFractionDigits: 2 }) : "—"],
+          ["Engagement rate", metrics.engagementRate != null ? metrics.engagementRate.toFixed(2) + "%" : "—"],
+          ["Cost per lead", metrics.cpl != null ? inr(metrics.cpl, { maximumFractionDigits: 2 }) : "—"]
+        ]} />
+      </div>
+
+      {/* 3. Visual breakdown */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginBottom: 22 }}>
+        <SectionCard title="Spend vs. revenue">
+          <TwoBarCompare items={[
+            { label: "Total ad spend", value: metrics.mediaSpend, color: `${INK_TEXT}55` },
+            ...(metrics.revenue != null ? [{ label: "Revenue generated", value: metrics.revenue, color: MOSS }] : [])
+          ]} />
+        </SectionCard>
+        <SectionCard title="Expense bifurcation">
+          <ExpenseBifurcation channels={campaign.channels} otherExpenses={campaign.otherExpenses} />
+        </SectionCard>
+        <SectionCard title="Outcome funnel">
+          <OutcomeFunnelBars impressions={metrics.impressions} clicks={metrics.clicks} conversions={metrics.conversions} revenue={metrics.revenue} />
+        </SectionCard>
+      </div>
+
+      {/* 4. Performance evaluation engine */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 700, color: MUTED_TEXT, marginBottom: 10, letterSpacing: "0.02em" }}>PERFORMANCE EVALUATION</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+          {evaluation.dims.map(d => <DimensionCard key={d.name} dim={d} />)}
+        </div>
+      </div>
+
+      {/* 5. Why section */}
+      {(strongDims.length > 0 || weakDims.length > 0 || concentrationNote) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 20 }}>
+          {strongDims.length > 0 && (
+            <SectionCard title="What's working">
+              {strongDims.map(d => (
+                <div key={d.name} style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, marginBottom: 8, lineHeight: 1.6 }}>
+                  <span style={{ color: MOSS }}>✓</span> <strong>{d.name}.</strong> {d.detail}
+                </div>
+              ))}
+            </SectionCard>
+          )}
+          {(weakDims.length > 0 || concentrationNote) && (
+            <SectionCard title="What needs attention">
+              {weakDims.map(d => (
+                <div key={d.name} style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, marginBottom: 8, lineHeight: 1.6 }}>
+                  <span style={{ color: AMBER }}>⚠</span> <strong>{d.name}.</strong> {d.detail}
+                </div>
+              ))}
+              {concentrationNote && (
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, lineHeight: 1.6 }}>
+                  <span style={{ color: AMBER }}>⚠</span> {concentrationNote}
+                </div>
+              )}
+            </SectionCard>
+          )}
+        </div>
+      )}
+
+      {/* 6. Expense quality analysis */}
+      <div style={{ marginTop: 4 }}>
+        {campaign.channels.length > 0 ? (
+          <ChannelSection channels={campaign.channels} contextNoun="campaign" readOnly onAdd={() => {}} onUpdate={() => {}} onDelete={() => {}} />
+        ) : (
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginTop: 22 }}>
+            No channel breakdown entered — go back and add channels to see per-channel efficiency.
+          </div>
+        )}
+      </div>
+
+      {campaign.otherExpenses.length > 0 && (
+        <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 24, marginTop: 18 }}>
+          <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT, marginBottom: 12 }}>Other campaign costs</div>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${PAPER_LINE}` }}>
+                  <th style={thStyle}>Cost</th><th style={thStyle}>Amount</th><th style={thStyle}>Share of total cost</th><th style={thStyle}>Assessment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaign.otherExpenses.map(e => (
+                  <tr key={e.id} style={{ borderBottom: `1px solid ${PAPER_LINE}` }}>
+                    <td style={tdStyle}>{e.name}</td>
+                    <td style={tdStyle}>{inrShort(e.amount)}</td>
+                    <td style={tdStyle}>{metrics.totalCost > 0 ? ((e.amount / metrics.totalCost) * 100).toFixed(0) + "%" : "—"}</td>
+                    <td style={tdStyle}><span style={{ color: MUTED_TEXT }}>Support cost — not directly attributable</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Recommendations */}
+      <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 24, marginTop: 18 }}>
+        <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT, marginBottom: 12 }}>Recommendations</div>
+        {recommendations.map((text, i) => (
+          <div key={i} style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, marginBottom: 8, lineHeight: 1.6 }}>· {text}</div>
+        ))}
+      </div>
+
+      {/* 8. Final summary */}
+      <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 24, marginTop: 18, marginBottom: 4 }}>
+        <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT, marginBottom: 10 }}>Campaign performance summary</div>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, lineHeight: 1.7 }}>{summary}</div>
+      </div>
+    </div>
+  );
+}
+
+function CampaignEvaluator() {
+  const [campaign, setCampaign] = useState(() => loadJSON(LS_KEYS.evaluatorCampaign, BLANK_CAMPAIGN));
+  const [showResults, setShowResults] = useState(() => loadJSON(LS_KEYS.evaluatorShowResults, false));
+
+  useEffect(() => { saveJSON(LS_KEYS.evaluatorCampaign, campaign); }, [campaign]);
+  useEffect(() => { saveJSON(LS_KEYS.evaluatorShowResults, showResults); }, [showResults]);
+
+  function handleLoadExample() {
+    if ((campaign.brandName || campaign.campaignName || campaign.channels.length) && !window.confirm("Load the illustrative example? This replaces your current inputs.")) return;
+    setCampaign(CAMPAIGN_EVALUATOR_EXAMPLE);
+    setShowResults(false);
+  }
+  function handleReset() {
+    if (!window.confirm("Clear this campaign and start over?")) return;
+    setCampaign(BLANK_CAMPAIGN);
+    setShowResults(false);
+  }
+
+  if (!showResults) {
+    return <CampaignForm campaign={campaign} setCampaign={setCampaign} onAnalyse={() => setShowResults(true)} onLoadExample={handleLoadExample} />;
+  }
+  return <CampaignReport campaign={campaign} onEdit={() => setShowResults(false)} onReset={handleReset} />;
+}
+
 /* ---------- App shell ---------- */
 export default function App() {
   const [tab, setTab] = useState("real");
-  const isReal = tab === "real";
+  const isDark = tab === "modeled";
 
   return (
     <div style={{
-      minHeight: "100%", background: isReal ? "#FBF9F4" : INK, transition: "background 0.2s",
+      minHeight: "100%", background: isDark ? INK : "#FBF9F4", transition: "background 0.2s",
       padding: "32px 28px", boxSizing: "border-box", fontFamily: "Inter, sans-serif"
     }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
@@ -1378,26 +1957,28 @@ export default function App() {
       <div style={{ marginBottom: 28 }}>
         <div style={{
           fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 700,
-          color: isReal ? INK_TEXT : ON_DARK, letterSpacing: "-0.01em"
+          color: isDark ? ON_DARK : INK_TEXT, letterSpacing: "-0.01em"
         }}>Ad-Spend vs. Outcome Tracker</div>
-        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: isReal ? MUTED_TEXT : ON_DARK_MUTED, marginTop: 4 }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: isDark ? ON_DARK_MUTED : MUTED_TEXT, marginTop: 4 }}>
           AMS Capstone · Topic 6 — enter your own ad spend and revenue data, or load the Honasa Consumer example
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${isReal ? PAPER_LINE : SLATE_LINE}`, marginBottom: 28 }}>
-        {[["real", "Real Ledger"], ["modeled", "Modeled Funnel"]].map(([id, name]) => (
+      <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${isDark ? SLATE_LINE : PAPER_LINE}`, marginBottom: 28, flexWrap: "wrap" }}>
+        {[["real", "Real Ledger"], ["evaluator", "Campaign Evaluator"], ["modeled", "Modeled Funnel"]].map(([id, name]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             background: "none", border: "none", cursor: "pointer", padding: "0 0 12px 0",
             fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
-            color: tab === id ? (isReal ? INK_TEXT : ON_DARK) : (isReal ? MUTED_TEXT : ON_DARK_MUTED),
-            borderBottom: tab === id ? `2px solid ${isReal ? INK_TEXT : ON_DARK}` : "2px solid transparent",
+            color: tab === id ? (isDark ? ON_DARK : INK_TEXT) : (isDark ? ON_DARK_MUTED : MUTED_TEXT),
+            borderBottom: tab === id ? `2px solid ${isDark ? ON_DARK : INK_TEXT}` : "2px solid transparent",
             marginBottom: -1
           }}>{name}</button>
         ))}
       </div>
 
-      {isReal ? <RealLedger /> : <ModeledFunnel />}
+      {tab === "real" && <RealLedger />}
+      {tab === "evaluator" && <CampaignEvaluator />}
+      {tab === "modeled" && <ModeledFunnel />}
     </div>
   );
 }
