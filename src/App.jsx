@@ -609,6 +609,321 @@ function WhatIfLedger({ quarter }) {
   );
 }
 
+/* ---------- Channel breakdown (optional, per period) ----------
+   Everything here is derived only from numbers the user enters for THIS period's channels —
+   no external benchmarks, no fitted models. "Weakest"/"strongest" and the recommendation text
+   are relative comparisons among the channels actually entered, not industry claims. */
+function computeChannelStats(ch) {
+  const roas = ch.spend > 0 ? ch.revenue / ch.spend : null;
+  const ctr = (ch.impressions != null && ch.impressions > 0 && ch.clicks != null) ? (ch.clicks / ch.impressions) * 100 : null;
+  const cvr = (ch.clicks != null && ch.clicks > 0 && ch.conversions != null) ? (ch.conversions / ch.clicks) * 100 : null;
+  const cpa = (ch.conversions != null && ch.conversions > 0) ? ch.spend / ch.conversions : null;
+  return { roas, ctr, cvr, cpa };
+}
+
+function analyzeChannels(channels) {
+  const withStats = channels.map(ch => ({ ...ch, stats: computeChannelStats(ch) }));
+  const withRoas = withStats.filter(ch => ch.stats.roas != null);
+  if (!withRoas.length) return { enriched: withStats, blendedRoas: null, avgCtr: null, avgCvr: null };
+
+  const totalSpend = withRoas.reduce((s, c) => s + c.spend, 0);
+  const totalRevenue = withRoas.reduce((s, c) => s + c.revenue, 0);
+  const blendedRoas = totalSpend > 0 ? totalRevenue / totalSpend : null;
+
+  let weakestId = null, strongestId = null;
+  if (withRoas.length >= 2) {
+    const sorted = [...withRoas].sort((a, b) => a.stats.roas - b.stats.roas);
+    weakestId = sorted[0].id;
+    strongestId = sorted[sorted.length - 1].id;
+  }
+
+  const ctrVals = withRoas.map(c => c.stats.ctr).filter(v => v != null);
+  const cvrVals = withRoas.map(c => c.stats.cvr).filter(v => v != null);
+  const avgCtr = ctrVals.length ? ctrVals.reduce((a, b) => a + b, 0) / ctrVals.length : null;
+  const avgCvr = cvrVals.length ? cvrVals.reduce((a, b) => a + b, 0) / cvrVals.length : null;
+
+  const enriched = withStats.map(ch => ({
+    ...ch,
+    flag: ch.id === strongestId ? "strongest" : ch.id === weakestId ? "weakest" : null
+  }));
+
+  return { enriched, blendedRoas, avgCtr, avgCvr };
+}
+
+function channelDiagnosis(ch, analysis) {
+  const notes = [];
+  const { stats } = ch;
+  if (stats.roas != null && analysis.blendedRoas != null) {
+    if (ch.flag === "weakest" && stats.roas < analysis.blendedRoas * 0.85) {
+      notes.push(`ROAS (${stats.roas.toFixed(1)}×) is well below the ${analysis.blendedRoas.toFixed(1)}× blended across entered channels.`);
+    }
+    if (ch.flag === "strongest" && stats.roas > analysis.blendedRoas * 1.15) {
+      notes.push(`ROAS (${stats.roas.toFixed(1)}×) is well above the ${analysis.blendedRoas.toFixed(1)}× blended across entered channels.`);
+    }
+  }
+  if (stats.ctr != null && analysis.avgCtr) {
+    const rel = stats.ctr / analysis.avgCtr;
+    if (rel < 0.7) notes.push(`CTR (${stats.ctr.toFixed(2)}%) is below this period's channel average (${analysis.avgCtr.toFixed(2)}%) — reach isn't converting into clicks as well as your other channels.`);
+    else if (rel > 1.3) notes.push(`CTR (${stats.ctr.toFixed(2)}%) is above this period's channel average (${analysis.avgCtr.toFixed(2)}%).`);
+  }
+  if (stats.cvr != null && analysis.avgCvr) {
+    const rel = stats.cvr / analysis.avgCvr;
+    if (rel < 0.7) notes.push(`Conversion rate (${stats.cvr.toFixed(2)}%) is below this period's channel average (${analysis.avgCvr.toFixed(2)}%) — clicks aren't converting as well here.`);
+    else if (rel > 1.3) notes.push(`Conversion rate (${stats.cvr.toFixed(2)}%) is above this period's channel average (${analysis.avgCvr.toFixed(2)}%).`);
+  }
+  return notes;
+}
+
+function buildChannelRecommendations(analysis) {
+  const recs = [];
+  const weakest = analysis.enriched.find(c => c.flag === "weakest");
+  const strongest = analysis.enriched.find(c => c.flag === "strongest");
+  if (weakest) {
+    recs.push(`${weakest.name} has the lowest ROAS (${weakest.stats.roas.toFixed(1)}×) of the channels entered this period. Before shifting more budget here, check whether the CTR/CVR columns above point to a targeting, creative, or landing-page issue.`);
+  }
+  if (strongest && strongest.id !== weakest?.id) {
+    recs.push(`${strongest.name} has the highest ROAS (${strongest.stats.roas.toFixed(1)}×). If there's budget to test incrementally, this is the most natural candidate — though only a real incrementality test can confirm returns hold at a larger spend.`);
+  }
+  if (!weakest && !strongest) {
+    recs.push("Add at least two channels for this period to compare performance and surface a reallocation candidate.");
+  }
+  return recs;
+}
+
+function blankChannelDraft() {
+  return { name: "", spend: "", revenue: "", impressions: "", clicks: "", conversions: "" };
+}
+function channelToDraft(ch) {
+  return {
+    name: ch.name ?? "", spend: ch.spend ?? "", revenue: ch.revenue ?? "",
+    impressions: ch.impressions ?? "", clicks: ch.clicks ?? "", conversions: ch.conversions ?? ""
+  };
+}
+function draftToChannel(draft, existingId) {
+  const errors = [];
+  if (!draft.name.trim()) errors.push("Channel name is required.");
+  const spend = Number(draft.spend);
+  const revenue = Number(draft.revenue);
+  if (!Number.isFinite(spend) || spend <= 0) errors.push("Spend must be a positive number.");
+  if (!Number.isFinite(revenue)) errors.push("Revenue must be a number.");
+  const optNum = (v) => v === "" ? null : Number(v);
+  const impressions = optNum(draft.impressions), clicks = optNum(draft.clicks), conversions = optNum(draft.conversions);
+  if ([impressions, clicks, conversions].some(v => v != null && !Number.isFinite(v))) {
+    errors.push("Impressions/clicks/conversions must be numbers if provided.");
+  }
+  if (errors.length) return { error: errors.join(" ") };
+  return {
+    channel: {
+      id: existingId || `ch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: draft.name.trim(), spend, revenue, impressions, clicks, conversions
+    }
+  };
+}
+
+function ChannelForm({ initialChannel, onSave, onCancel }) {
+  const [draft, setDraft] = useState(() => initialChannel ? channelToDraft(initialChannel) : blankChannelDraft());
+  const [error, setError] = useState(null);
+  const set = (key) => (e) => setDraft(prev => ({ ...prev, [key]: e.target.value }));
+
+  const handleSave = () => {
+    const result = draftToChannel(draft, initialChannel?.id);
+    if (result.error) { setError(result.error); return; }
+    onSave(result.channel);
+  };
+
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT, marginBottom: 10 }}>
+        {initialChannel ? "Edit channel" : "Add a channel"}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 12 }}>
+        <LightField label="Channel name" required value={draft.name} onChange={set("name")} placeholder="e.g. Meta Ads" />
+        <LightField label="Spend" required type="number" value={draft.spend} onChange={set("spend")} />
+        <LightField label="Revenue" required type="number" value={draft.revenue} onChange={set("revenue")} />
+        <LightField label="Impressions (optional)" type="number" value={draft.impressions} onChange={set("impressions")} />
+        <LightField label="Clicks (optional)" type="number" value={draft.clicks} onChange={set("clicks")} />
+        <LightField label="Conversions (optional)" type="number" value={draft.conversions} onChange={set("conversions")} />
+      </div>
+      {error && <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: BRICK, marginBottom: 10 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={handleSave} style={btnPrimary}>{initialChannel ? "Save changes" : "Add channel"}</button>
+        <button onClick={onCancel} style={btnSecondary}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+const thStyle = { textAlign: "left", padding: "6px 10px", fontFamily: "Inter, sans-serif", fontWeight: 600, color: MUTED_TEXT, fontSize: 11 };
+const tdStyle = { padding: "8px 10px", fontFamily: "Inter, sans-serif", color: INK_TEXT, whiteSpace: "nowrap", fontSize: 12 };
+
+function ChannelWhatIfSlider({ channel }) {
+  const [hypSpend, setHypSpend] = useState(channel.spend);
+  const stats = computeChannelStats(channel);
+  const projectedRevenue = stats.roas != null ? hypSpend * stats.roas : null;
+  const min = 0;
+  const max = Math.max(1, Math.round(channel.spend * 2));
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+        <input type="range" min={min} max={max} step={1} value={hypSpend}
+          onChange={e => setHypSpend(Number(e.target.value))}
+          style={{ flex: 1, minWidth: 180, accentColor: BRICK }} />
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontFamily: "'Source Serif 4', serif", fontSize: 18, fontWeight: 600, color: INK_TEXT, fontVariantNumeric: "tabular-nums" }}>
+            {inrShort(hypSpend)}
+          </span>
+          <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT }}>(actual: {inrShort(channel.spend)})</span>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 14 }}>
+        <div>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginBottom: 4 }}>{channel.name}'s current ROAS</div>
+          <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 18, fontWeight: 600, color: INK_TEXT }}>{stats.roas != null ? stats.roas.toFixed(2) + "×" : "—"}</div>
+        </div>
+        <div>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginBottom: 4 }}>Projected revenue at this spend</div>
+          <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 18, fontWeight: 600, color: INK_TEXT }}>{projectedRevenue != null ? inrShort(projectedRevenue) : "—"}</div>
+        </div>
+      </div>
+      <div style={{
+        background: `${AMBER}14`, border: `1px solid ${AMBER}55`, borderRadius: 6, padding: "10px 12px",
+        fontFamily: "Inter, sans-serif", fontSize: 12, color: INK_TEXT, lineHeight: 1.6
+      }}>
+        This assumes {channel.name}'s current ROAS holds at the margin as spend changes — a constant-ROAS
+        projection, not a fitted model. It's weaker evidence than the period-level what-if above, since it's
+        based on one spend/revenue snapshot for this channel rather than an observed change over time, and it
+        ignores diminishing returns entirely.
+      </div>
+    </div>
+  );
+}
+
+function ChannelWhatIf({ channels }) {
+  const eligible = channels.filter(c => c.stats.roas != null);
+  const [selectedId, setSelectedId] = useState(eligible[0]?.id ?? null);
+  if (!eligible.length) return null;
+  const channel = eligible.find(c => c.id === selectedId) ?? eligible[0];
+
+  return (
+    <div style={{ marginTop: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>
+          What if spend on
+        </div>
+        <select value={channel.id} onChange={e => setSelectedId(e.target.value)}
+          style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "4px 8px", background: "#fff" }}>
+          {eligible.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>changed?</div>
+      </div>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 14 }}>
+        A reallocation what-if for one channel — see caveat below.
+      </div>
+      <ChannelWhatIfSlider key={channel.id} channel={channel} />
+    </div>
+  );
+}
+
+function ChannelSection({ channels, onAdd, onUpdate, onDelete }) {
+  const [mode, setMode] = useState(null); // null | "add" | "edit"
+  const [editId, setEditId] = useState(null);
+  const analysis = useMemo(() => analyzeChannels(channels), [channels]);
+  const editingChannel = mode === "edit" ? channels.find(c => c.id === editId) : null;
+
+  return (
+    <div style={{ background: PAPER, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 24, marginTop: 22 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+        <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 16, fontWeight: 600, color: INK_TEXT }}>Channel breakdown</div>
+        <button onClick={() => { setMode("add"); setEditId(null); }} style={btnGhostSmall}>+ Add channel</button>
+      </div>
+
+      {channels.length === 0 && mode === null && (
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, lineHeight: 1.6 }}>
+          Optional — break this period's spend down by channel (Meta, Google, YouTube, etc.) to see which channel
+          is driving or dragging performance, with a diagnosis, recommendations, and a channel-level what-if.
+        </div>
+      )}
+
+      {mode === "add" && <ChannelForm onSave={(ch) => { onAdd(ch); setMode(null); }} onCancel={() => setMode(null)} />}
+      {mode === "edit" && editingChannel && <ChannelForm initialChannel={editingChannel} onSave={(ch) => { onUpdate(ch); setMode(null); }} onCancel={() => setMode(null)} />}
+
+      {channels.length > 0 && (
+        <>
+          <div style={{ overflowX: "auto", marginBottom: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${PAPER_LINE}` }}>
+                  <th style={thStyle}>Channel</th>
+                  <th style={thStyle}>Spend</th>
+                  <th style={thStyle}>Revenue</th>
+                  <th style={thStyle}>ROAS</th>
+                  <th style={thStyle}>CTR</th>
+                  <th style={thStyle}>CVR</th>
+                  <th style={thStyle}>CPA</th>
+                  <th style={thStyle}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {analysis.enriched.map(ch => (
+                  <tr key={ch.id} style={{ borderBottom: `1px solid ${PAPER_LINE}` }}>
+                    <td style={tdStyle}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <Dot verdict={ch.flag === "weakest" ? "Red" : ch.flag === "strongest" ? "Green" : "Yellow"} size={8} />
+                        {ch.name}
+                      </span>
+                    </td>
+                    <td style={tdStyle}>{inrShort(ch.spend)}</td>
+                    <td style={tdStyle}>{inrShort(ch.revenue)}</td>
+                    <td style={tdStyle}>{ch.stats.roas != null ? ch.stats.roas.toFixed(1) + "×" : "—"}</td>
+                    <td style={tdStyle}>{ch.stats.ctr != null ? ch.stats.ctr.toFixed(2) + "%" : "—"}</td>
+                    <td style={tdStyle}>{ch.stats.cvr != null ? ch.stats.cvr.toFixed(2) + "%" : "—"}</td>
+                    <td style={tdStyle}>{ch.stats.cpa != null ? inr(ch.stats.cpa, { maximumFractionDigits: 2 }) : "—"}</td>
+                    <td style={tdStyle}>
+                      <button onClick={() => { setMode("edit"); setEditId(ch.id); }} style={{ ...btnGhostSmall, marginRight: 6 }}>Edit</button>
+                      <button onClick={() => onDelete(ch.id)} style={{ ...btnGhostSmall, color: BRICK, borderColor: `${BRICK}55` }}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {analysis.blendedRoas != null && (
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 12, color: MUTED_TEXT, marginBottom: 14 }}>
+              Blended ROAS across entered channels: <strong style={{ color: INK_TEXT }}>{analysis.blendedRoas.toFixed(1)}×</strong>
+            </div>
+          )}
+
+          {analysis.enriched.filter(ch => ch.flag).map(ch => {
+            const notes = channelDiagnosis(ch, analysis);
+            if (!notes.length) return null;
+            return (
+              <div key={ch.id} style={{
+                fontFamily: "Inter, sans-serif", fontSize: 12, color: INK_TEXT, marginBottom: 8, padding: "8px 12px",
+                background: ch.flag === "weakest" ? `${BRICK}12` : `${MOSS}12`, borderRadius: 6, lineHeight: 1.6
+              }}>
+                <strong>{ch.name}:</strong> {notes.join(" ")}
+              </div>
+            );
+          })}
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, fontWeight: 700, color: MUTED_TEXT, marginBottom: 8, letterSpacing: "0.02em" }}>
+              RECOMMENDATIONS
+            </div>
+            {buildChannelRecommendations(analysis).map((text, i) => (
+              <div key={i} style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, marginBottom: 6, lineHeight: 1.6 }}>· {text}</div>
+            ))}
+          </div>
+
+          <ChannelWhatIf channels={analysis.enriched} />
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Real Ledger tab — generic: bring your own periods, or load the Honasa example ---------- */
 function RealLedger() {
   const [quarters, setQuarters] = useState(() => loadJSON(LS_KEYS.quarters, []));
@@ -654,6 +969,20 @@ function RealLedger() {
     setQuarters(importedQuarters);
     setSelectedId(importedQuarters.length ? importedQuarters[importedQuarters.length - 1].id : null);
     setMode(null);
+  }
+  function handleAddChannel(quarterId, channel) {
+    setQuarters(prev => prev.map(q => q.id === quarterId ? { ...q, channels: [...(q.channels || []), channel] } : q));
+  }
+  function handleUpdateChannel(quarterId, channel) {
+    setQuarters(prev => prev.map(q => q.id === quarterId
+      ? { ...q, channels: (q.channels || []).map(c => c.id === channel.id ? channel : c) }
+      : q));
+  }
+  function handleDeleteChannel(quarterId, channelId) {
+    if (!window.confirm("Remove this channel? This can't be undone.")) return;
+    setQuarters(prev => prev.map(q => q.id === quarterId
+      ? { ...q, channels: (q.channels || []).filter(c => c.id !== channelId) }
+      : q));
   }
 
   const chartData = enriched.map(q => ({
@@ -744,6 +1073,21 @@ function RealLedger() {
                 </div>
               </div>
 
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 12, marginTop: 16 }}>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginBottom: 4 }}>Ad spend</div>
+                  <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 20, fontWeight: 600, color: INK_TEXT }}>{inrShort(selected.adSpend)}</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginBottom: 4 }}>Revenue</div>
+                  <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 20, fontWeight: 600, color: INK_TEXT }}>{inrShort(selected.revenue)}</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT, marginBottom: 4 }}>ROAS</div>
+                  <div style={{ fontFamily: "'Source Serif 4', serif", fontSize: 20, fontWeight: 600, color: INK_TEXT }}>{(selected.revenue / selected.adSpend).toFixed(2)}×</div>
+                </div>
+              </div>
+
               <div style={{ height: 1, background: PAPER_LINE, margin: "16px 0" }} />
 
               {selected.result.checks.length === 0 && (
@@ -770,6 +1114,17 @@ function RealLedger() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Channel breakdown — optional drill-down: which channel is driving or dragging this period */}
+          {selected && (
+            <ChannelSection
+              key={selected.id}
+              channels={selected.channels || []}
+              onAdd={(ch) => handleAddChannel(selected.id, ch)}
+              onUpdate={(ch) => handleUpdateChannel(selected.id, ch)}
+              onDelete={(id) => handleDeleteChannel(selected.id, id)}
+            />
           )}
 
           {/* Interactive what-if layer — single period, linear projection only */}
