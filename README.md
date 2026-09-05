@@ -8,7 +8,7 @@ JSON) — or load the built-in Honasa Consumer (Mamaearth's parent company) work
 it running end to end. Data you enter is saved to your browser's local storage, so it survives a
 reload but never leaves your device.
 
-## Three tabs
+## Three tabs (in order: Campaign Evaluator, Modeled Funnel, Real Ledger)
 
 - **Real Ledger** — add any number of periods (ad spend & revenue this period vs. the same period
   a year earlier, plus optional profit and secondary-metric fields), and each is scored on up to 5
@@ -51,6 +51,16 @@ or channel-level figures, so the Campaign Evaluator's examples and the SaaS funn
 clearly-labeled seeded numbers from entirely fictional brands instead — never presented as real
 data. The Real Ledger tab's checks A–E and verdict logic are unchanged from the original build,
 apart from a correctness fix (see below).
+
+## Look & feel
+
+The whole app is dark-themed (all three tabs, not just Modeled Funnel as in earlier versions).
+A drifting three.js point field sits behind the content: constellation lines connect nearby
+points, a quiet reference grid gives it a "dashboard floor" sense of depth, and a magnetic glow
+trails the pointer on devices with a real mouse. It's decorative only (`pointer-events: none`
+throughout), stays out of the way of reading forms and tables since solid card backgrounds sit
+above it, is deliberately toned down on narrow/mobile viewports (fewer, smaller points; no lines
+or grid), and turns itself off for `prefers-reduced-motion` or if WebGL isn't available.
 
 ## Run it
 

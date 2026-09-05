@@ -4,20 +4,25 @@ import {
 } from "recharts";
 import * as THREE from "three";
 
-/* ---------- Design tokens ---------- */
-const INK = "#181C21";
-const PAPER = "#F6F2E9";
-const PAPER_LINE = "#DDD5C3";
+/* ---------- Design tokens ----------
+   The app is dark-themed throughout now. PAPER/PAPER_LINE/INK_TEXT/MUTED_TEXT used to be a
+   separate cream "light" palette for Real Ledger & Campaign Evaluator; they're set to the same
+   values as the dark SLATE/ON_DARK tokens below so every card/text style built on top of them
+   (there are dozens of usages) goes dark without having to touch each one individually. */
+const INK = "#14181D";
 const SLATE = "#1B2531";
-const SLATE_LINE = "#5E7A90";
-const MOSS = "#4B7856";
-const AMBER = "#B9862F";
-const BRICK = "#AB4A34";
-const INK_TEXT = "#20242A";
-const MUTED_TEXT = "#6B6355";
+const SLATE_LINE = "#4A6178";
+const PAPER = SLATE;
+const PAPER_LINE = SLATE_LINE;
+const MOSS = "#5FA37A";
+const AMBER = "#D9A441";
+const BRICK = "#D9695A";
 const ON_DARK = "#E7E9EC";
 const ON_DARK_MUTED = "#93A3B2";
-const REAL_GOLD = "#C9A24B"; // flags a value as real/disclosed data, not a seeded assumption
+const INK_TEXT = ON_DARK;
+const MUTED_TEXT = ON_DARK_MUTED;
+const INPUT_BG = "#242F3D"; // input fields — one step lighter than card backgrounds, for contrast
+const REAL_GOLD = "#D8B662"; // flags a value as real/disclosed data, not a seeded assumption
 
 const VERDICT_COLOR = { Green: MOSS, Yellow: AMBER, Red: BRICK };
 
@@ -44,7 +49,7 @@ const btnSecondaryDark = {
 };
 const lightInputStyle = {
   fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT,
-  border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff"
+  border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: INPUT_BG
 };
 
 /* ---------- localStorage persistence (per-viewer only; nothing leaves the browser) ---------- */
@@ -412,7 +417,7 @@ function LightField({ label, required, value, onChange, type = "text", placehold
         {label}{required && <span style={{ color: BRICK }}> *</span>}
       </span>
       <input type={type} value={value} placeholder={placeholder} onChange={onChange}
-        style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }} />
+        style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: INPUT_BG }} />
     </label>
   );
 }
@@ -764,7 +769,7 @@ function ChannelForm({ initialChannel, onSave, onCancel }) {
   };
 
   return (
-    <div style={{ background: "#fff", border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
+    <div style={{ background: INPUT_BG, border: `1px solid ${PAPER_LINE}`, borderRadius: 8, padding: 16, marginBottom: 14 }}>
       <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT, marginBottom: 10 }}>
         {initialChannel ? "Edit channel" : "Add a channel"}
       </div>
@@ -843,7 +848,7 @@ function ChannelWhatIf({ channels, contextNoun = "period" }) {
           What if spend on
         </div>
         <select value={channel.id} onChange={e => setSelectedId(e.target.value)}
-          style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "4px 8px", background: "#fff" }}>
+          style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "4px 8px", background: INPUT_BG }}>
           {eligible.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: 600, color: INK_TEXT }}>changed?</div>
@@ -1597,7 +1602,7 @@ function LightSelect({ label, value, onChange, options }) {
     <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
       <span style={{ fontFamily: "Inter, sans-serif", fontSize: 11, color: MUTED_TEXT }}>{label}</span>
       <select value={value} onChange={onChange}
-        style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: "#fff" }}>
+        style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: INK_TEXT, border: `1px solid ${PAPER_LINE}`, borderRadius: 6, padding: "8px 10px", background: INPUT_BG }}>
         <option value="">— Select —</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
@@ -1697,7 +1702,7 @@ function OutcomeFunnelBars({ impressions, clicks, conversions, revenue }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {stages.map(s => (
           <div key={s.name} style={{
-            width: `${Math.max(12, (s.value / max) * 100)}%`, background: "#fff", border: `1px solid ${PAPER_LINE}`,
+            width: `${Math.max(12, (s.value / max) * 100)}%`, background: INPUT_BG, border: `1px solid ${PAPER_LINE}`,
             borderRadius: 6, padding: "10px 14px", display: "flex", justifyContent: "space-between", minWidth: 160
           }}>
             <span style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: MUTED_TEXT }}>{s.name}</span>
@@ -2020,20 +2025,23 @@ function CampaignEvaluator() {
 }
 
 /* ---------- Ambient three.js background ----------
-   A quiet, low-opacity drifting point field behind the content — decorative only. It never
-   intercepts clicks (pointer-events: none), stays out of the way of reading tables and forms
-   (very low particle count + opacity), retints instantly when the theme (light/dark tab)
-   changes, and turns itself off for prefers-reduced-motion or if WebGL isn't available. */
-function AmbientBackground({ dark }) {
+   A drifting point field with constellation lines and a quiet "dashboard floor" grid behind
+   the content, plus a magnetic cursor glow on devices with a real pointer. Decorative only —
+   it never intercepts clicks (pointer-events: none everywhere in this layer), stays out of the
+   way of reading tables and forms (solid card backgrounds sit above it; it's mostly visible in
+   the page margins and gaps), and turns itself off for prefers-reduced-motion or if WebGL isn't
+   available. */
+function AmbientBackground() {
   const mountRef = useRef(null);
-  const stateRef = useRef(null); // holds live three.js objects across renders, outside React state
+  const cursorRef = useRef(null);
 
-  // Mount once: build the scene, start the render loop, tear down on unmount.
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return undefined;
 
     const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const hasFinePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+    const isNarrow = window.innerWidth < 700;
 
     let renderer;
     try {
@@ -2045,13 +2053,14 @@ function AmbientBackground({ dark }) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
     camera.position.z = 70;
+    const baseCameraY = isNarrow ? 0 : 6;
+    camera.position.y = baseCameraY;
 
-    const isNarrow = window.innerWidth < 700;
-    const count = isNarrow ? 140 : 320;
+    // Drifting point field. Keep the z-spread modest relative to the camera's distance (70) —
+    // a wide spread lets some points land very close to the camera, where perspective blows
+    // their on-screen size up into oversized squares that collide with text.
+    const count = isNarrow ? 160 : 380;
     const positions = new Float32Array(count * 3);
-    // Keep the z-spread modest relative to the camera's distance (70) — a wide spread lets some
-    // points land very close to the camera, where perspective blows their on-screen size up into
-    // oversized squares that collide with text (most visible on narrow/mobile viewports).
     for (let i = 0; i < count; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 170;
       positions[i * 3 + 1] = (Math.random() - 0.5) * 110;
@@ -2059,9 +2068,49 @@ function AmbientBackground({ dark }) {
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const material = new THREE.PointsMaterial({ size: isNarrow ? 0.8 : 1.2, transparent: true, opacity: 0.4, sizeAttenuation: true });
+    const material = new THREE.PointsMaterial({
+      color: 0x8fb6d9, size: isNarrow ? 1.0 : 1.9, transparent: true, opacity: 0.7, sizeAttenuation: true
+    });
     const points = new THREE.Points(geometry, material);
-    scene.add(points);
+
+    const driftGroup = new THREE.Group();
+    driftGroup.add(points);
+    scene.add(driftGroup);
+
+    // Constellation lines between nearby points — a network/"dashboard" look. Computed once:
+    // the group rotates afterwards as a rigid body, so relative distances never change and the
+    // lines never need recomputing per frame. Skipped on narrow viewports to keep mobile clean.
+    let lineMaterial = null;
+    if (!isNarrow) {
+      const linePositions = [];
+      const THRESH = 12;
+      for (let i = 0; i < count; i++) {
+        for (let j = i + 1; j < count; j++) {
+          const dx = positions[i * 3] - positions[j * 3];
+          const dy = positions[i * 3 + 1] - positions[j * 3 + 1];
+          const dz = positions[i * 3 + 2] - positions[j * 3 + 2];
+          if (dx * dx + dy * dy + dz * dz < THRESH * THRESH) {
+            linePositions.push(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]);
+            linePositions.push(positions[j * 3], positions[j * 3 + 1], positions[j * 3 + 2]);
+          }
+        }
+      }
+      const lineGeometry = new THREE.BufferGeometry();
+      lineGeometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(linePositions), 3));
+      lineMaterial = new THREE.LineBasicMaterial({ color: 0x8fb6d9, transparent: true, opacity: 0.55 });
+      driftGroup.add(new THREE.LineSegments(lineGeometry, lineMaterial));
+    }
+
+    // A reference grid — the "dashboard floor" — drifts far more slowly than the point field
+    // above it, for a sense of depth. Skipped on narrow viewports.
+    let grid = null;
+    if (!isNarrow) {
+      grid = new THREE.GridHelper(220, 22, 0x6f93ad, 0x3a4b5c);
+      grid.position.y = -25;
+      grid.material.transparent = true;
+      grid.material.opacity = 0.55;
+      scene.add(grid);
+    }
 
     mount.appendChild(renderer.domElement);
     renderer.domElement.style.display = "block";
@@ -2086,10 +2135,11 @@ function AmbientBackground({ dark }) {
     let raf = null;
     function animate() {
       if (!reduceMotion) {
-        points.rotation.y += 0.0007;
-        points.rotation.x += 0.00025;
-        camera.position.x += (mouseX * 10 - camera.position.x) * 0.02;
-        camera.position.y += (-mouseY * 10 - camera.position.y) * 0.02;
+        driftGroup.rotation.y += 0.0009;
+        driftGroup.rotation.x += 0.00028;
+        if (grid) grid.rotation.y += 0.00012;
+        camera.position.x += (mouseX * 16 - camera.position.x) * 0.02;
+        camera.position.y += (-mouseY * 12 + baseCameraY - camera.position.y) * 0.02;
         camera.lookAt(scene.position);
       }
       renderer.render(scene, camera);
@@ -2097,74 +2147,99 @@ function AmbientBackground({ dark }) {
     }
     animate();
 
-    stateRef.current = { material };
+    // Magnetic cursor glow — a soft light that trails the pointer with spring easing. Skipped on
+    // touch devices (no persistent pointer to follow) and for prefers-reduced-motion.
+    let cleanupCursor = null;
+    if (hasFinePointer && !reduceMotion && cursorRef.current) {
+      const el = cursorRef.current;
+      let cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      let tx = cx, ty = cy;
+      let cursorRaf = null;
+      function onMove(e) { tx = e.clientX; ty = e.clientY; }
+      window.addEventListener("mousemove", onMove);
+      function followCursor() {
+        cx += (tx - cx) * 0.08;
+        cy += (ty - cy) * 0.08;
+        el.style.transform = `translate3d(${cx}px, ${cy}px, 0) translate(-50%, -50%)`;
+        cursorRaf = requestAnimationFrame(followCursor);
+      }
+      followCursor();
+      el.style.opacity = "1";
+      cleanupCursor = () => {
+        cancelAnimationFrame(cursorRaf);
+        window.removeEventListener("mousemove", onMove);
+      };
+    }
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
+      if (cleanupCursor) cleanupCursor();
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("resize", resize);
       geometry.dispose();
       material.dispose();
+      if (lineMaterial) lineMaterial.dispose();
+      if (grid) grid.material.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
-      stateRef.current = null;
     };
   }, []);
 
-  // Retint on theme change without rebuilding the whole scene.
-  useEffect(() => {
-    if (stateRef.current) stateRef.current.material.color.set(dark ? 0x5e7a90 : 0xc9a24b);
-  }, [dark]);
-
   return (
-    <div ref={mountRef} aria-hidden="true" style={{
-      position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden"
-    }} />
+    <>
+      <div ref={mountRef} aria-hidden="true" style={{
+        position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden"
+      }} />
+      <div ref={cursorRef} aria-hidden="true" style={{
+        position: "fixed", top: 0, left: 0, width: 280, height: 280, borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(217,164,65,0.14) 0%, rgba(217,164,65,0) 70%)",
+        pointerEvents: "none", zIndex: 0, opacity: 0, transition: "opacity 0.4s", willChange: "transform"
+      }} />
+    </>
   );
 }
 
 /* ---------- App shell ---------- */
 export default function App() {
-  const [tab, setTab] = useState("real");
-  const isDark = tab === "modeled";
+  const [tab, setTab] = useState("evaluator");
 
   return (
     <div style={{
-      position: "relative", minHeight: "100%", background: isDark ? INK : "#FBF9F4", transition: "background 0.2s",
+      position: "relative", minHeight: "100%", background: INK,
       padding: "32px 28px", boxSizing: "border-box", fontFamily: "Inter, sans-serif"
     }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
       input[type="range"] { cursor: pointer; }
       input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { opacity: 0.6; }`}</style>
 
-      <AmbientBackground dark={isDark} />
+      <AmbientBackground />
 
       <div style={{ position: "relative", zIndex: 1 }}>
         <div style={{ marginBottom: 28 }}>
           <div style={{
             fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 700,
-            color: isDark ? ON_DARK : INK_TEXT, letterSpacing: "-0.01em"
+            color: ON_DARK, letterSpacing: "-0.01em"
           }}>Ad-Spend vs. Outcome Tracker</div>
-          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: isDark ? ON_DARK_MUTED : MUTED_TEXT, marginTop: 4 }}>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: ON_DARK_MUTED, marginTop: 4 }}>
             AMS Capstone · Topic 6 — enter your own ad spend and revenue data, or load the Honasa Consumer example
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${isDark ? SLATE_LINE : PAPER_LINE}`, marginBottom: 28, flexWrap: "wrap" }}>
-          {[["real", "Real Ledger"], ["evaluator", "Campaign Evaluator"], ["modeled", "Modeled Funnel"]].map(([id, name]) => (
+        <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${SLATE_LINE}`, marginBottom: 28, flexWrap: "wrap" }}>
+          {[["evaluator", "Campaign Evaluator"], ["modeled", "Modeled Funnel"], ["real", "Real Ledger"]].map(([id, name]) => (
             <button key={id} onClick={() => setTab(id)} style={{
               background: "none", border: "none", cursor: "pointer", padding: "0 0 12px 0",
               fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
-              color: tab === id ? (isDark ? ON_DARK : INK_TEXT) : (isDark ? ON_DARK_MUTED : MUTED_TEXT),
-              borderBottom: tab === id ? `2px solid ${isDark ? ON_DARK : INK_TEXT}` : "2px solid transparent",
+              color: tab === id ? ON_DARK : ON_DARK_MUTED,
+              borderBottom: tab === id ? `2px solid ${ON_DARK}` : "2px solid transparent",
               marginBottom: -1
             }}>{name}</button>
           ))}
         </div>
 
-        {tab === "real" && <RealLedger />}
         {tab === "evaluator" && <CampaignEvaluator />}
         {tab === "modeled" && <ModeledFunnel />}
+        {tab === "real" && <RealLedger />}
       </div>
     </div>
   );
