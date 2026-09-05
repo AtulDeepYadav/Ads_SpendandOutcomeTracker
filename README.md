@@ -33,16 +33,24 @@ reload but never leaves your device.
   needs attention" breakdown, a per-channel expense-quality table, and recommendations — all ending
   in an auto-composed summary paragraph. **The score only ever reflects dimensions where you set a
   target** — set none, and the app shows raw metrics with no invented "industry standard" score.
+  Three illustrative examples are available (a picker, not just one button), deliberately spanning
+  all three verdict bands — D2C beauty (Good, 90/100), B2B SaaS lead gen (Good but mixed across
+  dimensions, 95/100), and a fashion flash sale (Poor, 33/100) — so the scoring engine's full range
+  is visible without you having to hand-craft a failing case yourself.
 - **Modeled Funnel** — model any campaign's funnel (impressions → clicks → conversions →
   CAC/ROAS/LTV:CAC) from your own rate assumptions (spend, CPM, CTR, CVR, AOV, repeat purchases,
   customer lifetime) — every downstream metric recomputes live. Optionally flag the gross margin
-  figure as real disclosed data rather than a seeded assumption, with a note on its source.
+  figure as real disclosed data rather than a seeded assumption, with a note on its source. Two
+  examples: the Honasa D2C beauty funnel (real gross margin) and a fully-illustrative SaaS
+  free-trial funnel with very different assumptions (lower CTR/CVR, much higher LTV:CAC via
+  subscription retention) for contrast.
 
-All three tabs have a **"Load Honasa / illustrative example"** button. Real Ledger's and Modeled
-Funnel's examples use real, sourced Honasa Consumer disclosures (see in-app citations); Honasa
-doesn't disclose campaign- or channel-level figures, so the Campaign Evaluator's example uses
-clearly-labeled seeded numbers instead, in the same spirit as the Modeled Funnel tab. The Real
-Ledger tab's checks A–E and verdict logic are unchanged from the original build.
+All three tabs have a **"Load example"** picker. Real Ledger's and one Modeled Funnel example use
+real, sourced Honasa Consumer disclosures (see in-app citations); Honasa doesn't disclose campaign-
+or channel-level figures, so the Campaign Evaluator's examples and the SaaS funnel example use
+clearly-labeled seeded numbers from entirely fictional brands instead — never presented as real
+data. The Real Ledger tab's checks A–E and verdict logic are unchanged from the original build,
+apart from a correctness fix (see below).
 
 ## Run it
 
@@ -53,7 +61,16 @@ npm run dev
 
 ## Stack
 
-Vite + React + [Recharts](https://recharts.org/).
+Vite + React + [Recharts](https://recharts.org/) + [three.js](https://threejs.org/) (a quiet,
+low-opacity ambient point-field background — decorative only, `pointer-events: none`, retints
+per tab's light/dark theme, respects `prefers-reduced-motion`, and no-ops if WebGL isn't available).
+
+## Known-fixed bug
+
+Real Ledger's profitability check (Check D) divided profit growth by ad-spend growth to judge
+efficiency. If spend fell year-over-year while profit still grew — an unambiguously good outcome —
+that division flipped sign and misclassified the period as "Inefficient." Fixed to judge that case
+(spend flat or down) directly instead of dividing by a zero/negative denominator.
 
 ## Docs
 

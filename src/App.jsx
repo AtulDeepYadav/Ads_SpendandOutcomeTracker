@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+import * as THREE from "three";
 
 /* ---------- Design tokens ---------- */
 const INK = "#181C21";
@@ -128,6 +129,17 @@ const HONASA_FUNNEL_EXAMPLE = {
   grossMarginIsReal: true,
   grossMarginNote: "real — Honasa's disclosed FY26 gross margin"
 };
+const SAAS_FUNNEL_EXAMPLE = {
+  campaignName: "Illustrative — SaaS free-trial funnel",
+  description: "A fully hypothetical example for a different business model (subscription SaaS), not tied to any real company. Useful for seeing how the same formulas play out with a lower CTR/CVR but much higher LTV:CAC than a D2C consumer example — subscription retention does a lot of work here. No figure in this example is real.",
+  assumptions: { spend: 2000000, cpm: 250, ctr: 0.9, cvr: 1.2, aov: 12000, grossMargin: 82, repeatPurchasesPerYear: 1, customerLifetimeYears: 3 },
+  grossMarginIsReal: false,
+  grossMarginNote: ""
+};
+const FUNNEL_EXAMPLES = [
+  { key: "honasa", label: "Honasa Consumer — D2C beauty (real gross margin)", data: HONASA_FUNNEL_EXAMPLE },
+  { key: "saas", label: "Illustrative — SaaS free-trial funnel", data: SAAS_FUNNEL_EXAMPLE }
+];
 const BLANK_FUNNEL_ASSUMPTIONS = { spend: 500000, cpm: 200, ctr: 1.5, cvr: 2.5, aov: 500, grossMargin: 50, repeatPurchasesPerYear: 2, customerLifetimeYears: 1.5 };
 
 /* ---------- Check logic — generic, works on any entered period's data ---------- */
@@ -186,8 +198,16 @@ function computeChecks(q, categoryGrowthEstimate) {
     } else {
       const profitGrowthPct = ((q.profit - q.priorProfit) / Math.abs(q.priorProfit)) * 100;
       dText = `${q.profitLabel} ${profitGrowthPct >= 0 ? "grew" : "fell"} ${Math.abs(profitGrowthPct).toFixed(0)}% YoY, while ad spend grew ${spendGrowthPct.toFixed(1)}%.`;
-      if (profitGrowthPct < 0) { dStatus = "Inefficient"; dScore = -1; }
-      else {
+      if (profitGrowthPct < 0) {
+        dStatus = "Inefficient"; dScore = -1;
+      } else if (spendGrowthPct <= 0) {
+        // Spend didn't grow (or fell) YoY. Dividing profit growth by a zero/negative spend-growth
+        // figure would flip or blow up the ratio below, so judge this case directly instead:
+        // profit grew on flat-or-lower spend is unambiguously good; flat profit on flat-or-lower
+        // spend is neutral, not a penalty.
+        if (profitGrowthPct > 0) { dStatus = "Efficient"; dScore = 1; }
+        else { dStatus = "Watch"; dScore = 0; }
+      } else {
         const ratio = profitGrowthPct / spendGrowthPct;
         if (ratio >= 2) { dStatus = "Efficient"; dScore = 1; }
         else if (ratio >= 0.5) { dStatus = "Watch"; dScore = 0; }
@@ -222,8 +242,14 @@ function computeChecks(q, categoryGrowthEstimate) {
 }
 
 /* ---------- Formatting helpers ---------- */
-const inr = (n, opts = {}) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0, ...opts });
-const inrShort = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const inr = (n, opts = {}) => {
+  const num = Number(n);
+  return (num < 0 ? "-" : "") + "₹" + Math.abs(num).toLocaleString("en-IN", { maximumFractionDigits: 0, ...opts });
+};
+const inrShort = (n) => {
+  const num = Number(n);
+  return (num < 0 ? "-" : "") + "₹" + Math.abs(num).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+};
 
 /* ---------- Import parsing (CSV or JSON) ---------- */
 function toNumOrNull(v) {
@@ -1208,14 +1234,16 @@ function ModeledFunnel() {
   useEffect(() => saveJSON(LS_KEYS.funnelGmNote, grossMarginNote), [grossMarginNote]);
 
   const set = (key) => (val) => setA(prev => ({ ...prev, [key]: val }));
+  const [exampleKey, setExampleKey] = useState(FUNNEL_EXAMPLES[0].key);
 
   function loadExample() {
-    if ((campaignName.trim() || description.trim()) && !window.confirm("Load the Honasa example? This replaces your current funnel inputs.")) return;
-    setCampaignName(HONASA_FUNNEL_EXAMPLE.campaignName);
-    setDescription(HONASA_FUNNEL_EXAMPLE.description);
-    setA(HONASA_FUNNEL_EXAMPLE.assumptions);
-    setGrossMarginIsReal(HONASA_FUNNEL_EXAMPLE.grossMarginIsReal);
-    setGrossMarginNote(HONASA_FUNNEL_EXAMPLE.grossMarginNote);
+    const ex = FUNNEL_EXAMPLES.find(e => e.key === exampleKey) || FUNNEL_EXAMPLES[0];
+    if ((campaignName.trim() || description.trim()) && !window.confirm(`Load the "${ex.label}" example? This replaces your current funnel inputs.`)) return;
+    setCampaignName(ex.data.campaignName);
+    setDescription(ex.data.description);
+    setA(ex.data.assumptions);
+    setGrossMarginIsReal(ex.data.grossMarginIsReal);
+    setGrossMarginNote(ex.data.grossMarginNote);
   }
   function resetAll() {
     if (!window.confirm("Reset the funnel to blank defaults?")) return;
@@ -1248,8 +1276,12 @@ function ModeledFunnel() {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
-        <button onClick={loadExample} style={btnSecondaryDark}>Load Honasa example</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18, alignItems: "center" }}>
+        <select value={exampleKey} onChange={e => setExampleKey(e.target.value)}
+          style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: ON_DARK, background: SLATE, border: `1px solid ${SLATE_LINE}`, borderRadius: 6, padding: "8px 10px" }}>
+          {FUNNEL_EXAMPLES.map(ex => <option key={ex.key} value={ex.key}>{ex.label}</option>)}
+        </select>
+        <button onClick={loadExample} style={btnSecondaryDark}>Load example</button>
         <button onClick={resetAll} style={btnSecondaryDark}>Reset to blank</button>
       </div>
 
@@ -1374,7 +1406,7 @@ function ModeledFunnel() {
    CPA, target CTR, target conversion rate). No target set anywhere = no score shown, rather
    than falling back to an invented "industry standard" threshold. */
 
-const INDUSTRY_OPTIONS = ["Beauty & Personal Care", "Fashion & Apparel", "Food & Beverage", "Electronics", "Travel", "Financial Services", "Education", "Healthcare", "Other"];
+const INDUSTRY_OPTIONS = ["Beauty & Personal Care", "Fashion & Apparel", "Food & Beverage", "Electronics", "Technology / SaaS", "Travel", "Financial Services", "Education", "Healthcare", "Other"];
 const OBJECTIVE_OPTIONS = ["Sales / Revenue", "Lead Generation", "Brand Awareness", "Website Traffic", "Engagement", "App Installs"];
 const OBJECTIVE_PRIMARY_METRICS = {
   "Sales / Revenue": ["revenue", "conversions"],
@@ -1401,25 +1433,67 @@ const BLANK_CAMPAIGN = {
   targets: { targetRoas: "", maxCpa: "", targetCtr: "", targetConversionRate: "" }
 };
 
-/* Illustrative example — seeded numbers for demo purposes, NOT Honasa's real disclosed data
-   (Honasa doesn't disclose campaign- or channel-level spend/outcome figures anywhere this
-   project could source; see the Modeled Funnel tab for the same caveat). */
-const CAMPAIGN_EVALUATOR_EXAMPLE = {
+/* Illustrative examples — seeded numbers for demo purposes, NOT any real company's disclosed
+   data. Honasa doesn't disclose campaign- or channel-level spend/outcome figures anywhere this
+   project could source (see the Modeled Funnel tab for the same caveat), and the other two
+   brands here are entirely fictional. Three examples deliberately span the three verdict bands
+   (Good / Needs Optimisation / Poor) so the scoring engine's full range is visible on load. */
+const CAMPAIGN_EVALUATOR_EXAMPLE_BEAUTY = {
   brandName: "Honasa Consumer (illustrative)", campaignName: "Derma Co. — Summer Serum Launch",
   industry: "Beauty & Personal Care", objective: "Sales / Revenue", durationDays: "30",
   targetAudience: "Women 25–40, urban India",
   channels: [
-    { id: "ex-meta", name: "Meta Ads", spend: 45000, revenue: 220000, impressions: 120000, clicks: 4200, conversions: 140 },
-    { id: "ex-google", name: "Google Ads", spend: 30000, revenue: 130000, impressions: 70000, clicks: 1750, conversions: 80 },
-    { id: "ex-youtube", name: "YouTube Ads", spend: 25000, revenue: 50000, impressions: 250000, clicks: 1750, conversions: 32 }
+    { id: "ex-b-meta", name: "Meta Ads", spend: 45000, revenue: 220000, impressions: 120000, clicks: 4200, conversions: 140 },
+    { id: "ex-b-google", name: "Google Ads", spend: 30000, revenue: 130000, impressions: 70000, clicks: 1750, conversions: 80 },
+    { id: "ex-b-youtube", name: "YouTube Ads", spend: 25000, revenue: 50000, impressions: 250000, clicks: 1750, conversions: 32 }
   ],
   otherExpenses: [
-    { id: "ex-creative", name: "Creative Production", amount: 12000 },
-    { id: "ex-agency", name: "Agency Fees", amount: 8000 }
+    { id: "ex-b-creative", name: "Creative Production", amount: 12000 },
+    { id: "ex-b-agency", name: "Agency Fees", amount: 8000 }
   ],
   outcomes: { revenue: 400000, impressions: 440000, reach: 300000, clicks: 7700, engagements: 20000, conversions: 252, leads: "" },
   targets: { targetRoas: 3, maxCpa: 500, targetCtr: 3, targetConversionRate: 3 }
 };
+
+const CAMPAIGN_EVALUATOR_EXAMPLE_SAAS = {
+  brandName: "CloudSuite (illustrative)", campaignName: "Q3 Enterprise Lead Gen",
+  industry: "Technology / SaaS", objective: "Lead Generation", durationDays: "45",
+  targetAudience: "IT directors at mid-market enterprises",
+  channels: [
+    { id: "ex-s-google", name: "Google Search Ads", spend: 80000, revenue: 180000, impressions: 50000, clicks: 3000, conversions: 45 },
+    { id: "ex-s-linkedin", name: "LinkedIn Ads", spend: 100000, revenue: 140000, impressions: 40000, clicks: 800, conversions: 25 },
+    { id: "ex-s-meta", name: "Meta Ads", spend: 40000, revenue: 30000, impressions: 150000, clicks: 3000, conversions: 8 }
+  ],
+  otherExpenses: [
+    { id: "ex-s-agency", name: "Agency Fees", amount: 15000 },
+    { id: "ex-s-landing", name: "Landing Page Development", amount: 10000 }
+  ],
+  outcomes: { revenue: 350000, impressions: 240000, reach: 200000, clicks: 6800, engagements: 5000, conversions: 78, leads: 78 },
+  targets: { targetRoas: 2, maxCpa: 3500, targetCtr: 2, targetConversionRate: 1 }
+};
+
+const CAMPAIGN_EVALUATOR_EXAMPLE_FASHION = {
+  brandName: "Threadline (illustrative)", campaignName: "Flash Sale — Monsoon Collection",
+  industry: "Fashion & Apparel", objective: "Sales / Revenue", durationDays: "14",
+  targetAudience: "Women 18–30, tier-2 cities",
+  channels: [
+    { id: "ex-f-meta", name: "Meta Ads", spend: 70000, revenue: 35000, impressions: 800000, clicks: 8500, conversions: 90 },
+    { id: "ex-f-google", name: "Google Shopping", spend: 50000, revenue: 15000, impressions: 200000, clicks: 4000, conversions: 40 },
+    { id: "ex-f-influencer", name: "Influencer Marketing", spend: 30000, revenue: 5000, impressions: 500000, clicks: 2500, conversions: 20 }
+  ],
+  otherExpenses: [
+    { id: "ex-f-creative", name: "Creative Production", amount: 8000 },
+    { id: "ex-f-discount", name: "Discount / Promo Subsidy", amount: 15000 }
+  ],
+  outcomes: { revenue: 55000, impressions: 1500000, reach: 900000, clicks: 15000, engagements: 30000, conversions: 150, leads: "" },
+  targets: { targetRoas: 3, maxCpa: 300, targetCtr: 2, targetConversionRate: 2.5 }
+};
+
+const CAMPAIGN_EVALUATOR_EXAMPLES = [
+  { key: "beauty", label: "D2C beauty — Serum launch (Good Investment)", data: CAMPAIGN_EVALUATOR_EXAMPLE_BEAUTY },
+  { key: "saas", label: "B2B SaaS — Enterprise lead gen (Good, mixed dimensions)", data: CAMPAIGN_EVALUATOR_EXAMPLE_SAAS },
+  { key: "fashion", label: "Fashion flash sale — Poor Investment", data: CAMPAIGN_EVALUATOR_EXAMPLE_FASHION }
+];
 
 function computeCampaignMetrics(c) {
   const mediaSpend = c.channels.reduce((s, ch) => s + (Number(ch.spend) || 0), 0);
@@ -1641,6 +1715,7 @@ function OutcomeFunnelBars({ impressions, clicks, conversions, revenue }) {
 }
 
 function CampaignForm({ campaign, setCampaign, onAnalyse, onLoadExample }) {
+  const [exampleKey, setExampleKey] = useState(CAMPAIGN_EVALUATOR_EXAMPLES[0].key);
   const set = (key) => (e) => setCampaign(prev => ({ ...prev, [key]: e.target.value }));
   const setOutcome = (key) => (e) => setCampaign(prev => ({ ...prev, outcomes: { ...prev.outcomes, [key]: e.target.value } }));
   const setTarget = (key) => (e) => setCampaign(prev => ({ ...prev, targets: { ...prev.targets, [key]: e.target.value } }));
@@ -1732,9 +1807,12 @@ function CampaignForm({ campaign, setCampaign, onAnalyse, onLoadExample }) {
         </div>
       </SectionCard>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button onClick={onAnalyse} style={{ ...btnPrimary, fontSize: 14, padding: "12px 22px" }}>Analyse Campaign Performance</button>
-        <button onClick={onLoadExample} style={btnSecondary}>Load illustrative example</button>
+        <select value={exampleKey} onChange={e => setExampleKey(e.target.value)} style={lightInputStyle}>
+          {CAMPAIGN_EVALUATOR_EXAMPLES.map(ex => <option key={ex.key} value={ex.key}>{ex.label}</option>)}
+        </select>
+        <button onClick={() => onLoadExample(exampleKey)} style={btnSecondary}>Load example</button>
       </div>
     </div>
   );
@@ -1923,9 +2001,10 @@ function CampaignEvaluator() {
   useEffect(() => { saveJSON(LS_KEYS.evaluatorCampaign, campaign); }, [campaign]);
   useEffect(() => { saveJSON(LS_KEYS.evaluatorShowResults, showResults); }, [showResults]);
 
-  function handleLoadExample() {
-    if ((campaign.brandName || campaign.campaignName || campaign.channels.length) && !window.confirm("Load the illustrative example? This replaces your current inputs.")) return;
-    setCampaign(CAMPAIGN_EVALUATOR_EXAMPLE);
+  function handleLoadExample(key) {
+    const ex = CAMPAIGN_EVALUATOR_EXAMPLES.find(e => e.key === key) || CAMPAIGN_EVALUATOR_EXAMPLES[0];
+    if ((campaign.brandName || campaign.campaignName || campaign.channels.length) && !window.confirm(`Load the "${ex.label}" example? This replaces your current inputs.`)) return;
+    setCampaign(ex.data);
     setShowResults(false);
   }
   function handleReset() {
@@ -1940,6 +2019,110 @@ function CampaignEvaluator() {
   return <CampaignReport campaign={campaign} onEdit={() => setShowResults(false)} onReset={handleReset} />;
 }
 
+/* ---------- Ambient three.js background ----------
+   A quiet, low-opacity drifting point field behind the content — decorative only. It never
+   intercepts clicks (pointer-events: none), stays out of the way of reading tables and forms
+   (very low particle count + opacity), retints instantly when the theme (light/dark tab)
+   changes, and turns itself off for prefers-reduced-motion or if WebGL isn't available. */
+function AmbientBackground({ dark }) {
+  const mountRef = useRef(null);
+  const stateRef = useRef(null); // holds live three.js objects across renders, outside React state
+
+  // Mount once: build the scene, start the render loop, tear down on unmount.
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return undefined;
+
+    const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: "low-power" });
+    } catch {
+      return undefined; // WebGL unavailable — skip the background entirely, no error shown to the user
+    }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 1000);
+    camera.position.z = 70;
+
+    const isNarrow = window.innerWidth < 700;
+    const count = isNarrow ? 140 : 320;
+    const positions = new Float32Array(count * 3);
+    // Keep the z-spread modest relative to the camera's distance (70) — a wide spread lets some
+    // points land very close to the camera, where perspective blows their on-screen size up into
+    // oversized squares that collide with text (most visible on narrow/mobile viewports).
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * 170;
+      positions[i * 3 + 1] = (Math.random() - 0.5) * 110;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 40;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.PointsMaterial({ size: isNarrow ? 0.8 : 1.2, transparent: true, opacity: 0.4, sizeAttenuation: true });
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+
+    mount.appendChild(renderer.domElement);
+    renderer.domElement.style.display = "block";
+
+    let mouseX = 0, mouseY = 0;
+    function onMouseMove(e) {
+      mouseX = e.clientX / window.innerWidth - 0.5;
+      mouseY = e.clientY / window.innerHeight - 0.5;
+    }
+    if (!reduceMotion) window.addEventListener("mousemove", onMouseMove);
+
+    function resize() {
+      const w = mount.clientWidth, h = mount.clientHeight;
+      camera.aspect = w / (h || 1);
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    let raf = null;
+    function animate() {
+      if (!reduceMotion) {
+        points.rotation.y += 0.0007;
+        points.rotation.x += 0.00025;
+        camera.position.x += (mouseX * 10 - camera.position.x) * 0.02;
+        camera.position.y += (-mouseY * 10 - camera.position.y) * 0.02;
+        camera.lookAt(scene.position);
+      }
+      renderer.render(scene, camera);
+      raf = requestAnimationFrame(animate);
+    }
+    animate();
+
+    stateRef.current = { material };
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("resize", resize);
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      stateRef.current = null;
+    };
+  }, []);
+
+  // Retint on theme change without rebuilding the whole scene.
+  useEffect(() => {
+    if (stateRef.current) stateRef.current.material.color.set(dark ? 0x5e7a90 : 0xc9a24b);
+  }, [dark]);
+
+  return (
+    <div ref={mountRef} aria-hidden="true" style={{
+      position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden"
+    }} />
+  );
+}
+
 /* ---------- App shell ---------- */
 export default function App() {
   const [tab, setTab] = useState("real");
@@ -1947,38 +2130,42 @@ export default function App() {
 
   return (
     <div style={{
-      minHeight: "100%", background: isDark ? INK : "#FBF9F4", transition: "background 0.2s",
+      position: "relative", minHeight: "100%", background: isDark ? INK : "#FBF9F4", transition: "background 0.2s",
       padding: "32px 28px", boxSizing: "border-box", fontFamily: "Inter, sans-serif"
     }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700&display=swap');
       input[type="range"] { cursor: pointer; }
       input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { opacity: 0.6; }`}</style>
 
-      <div style={{ marginBottom: 28 }}>
-        <div style={{
-          fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 700,
-          color: isDark ? ON_DARK : INK_TEXT, letterSpacing: "-0.01em"
-        }}>Ad-Spend vs. Outcome Tracker</div>
-        <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: isDark ? ON_DARK_MUTED : MUTED_TEXT, marginTop: 4 }}>
-          AMS Capstone · Topic 6 — enter your own ad spend and revenue data, or load the Honasa Consumer example
+      <AmbientBackground dark={isDark} />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        <div style={{ marginBottom: 28 }}>
+          <div style={{
+            fontFamily: "'Source Serif 4', serif", fontSize: 30, fontWeight: 700,
+            color: isDark ? ON_DARK : INK_TEXT, letterSpacing: "-0.01em"
+          }}>Ad-Spend vs. Outcome Tracker</div>
+          <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13, color: isDark ? ON_DARK_MUTED : MUTED_TEXT, marginTop: 4 }}>
+            AMS Capstone · Topic 6 — enter your own ad spend and revenue data, or load the Honasa Consumer example
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${isDark ? SLATE_LINE : PAPER_LINE}`, marginBottom: 28, flexWrap: "wrap" }}>
-        {[["real", "Real Ledger"], ["evaluator", "Campaign Evaluator"], ["modeled", "Modeled Funnel"]].map(([id, name]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            background: "none", border: "none", cursor: "pointer", padding: "0 0 12px 0",
-            fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
-            color: tab === id ? (isDark ? ON_DARK : INK_TEXT) : (isDark ? ON_DARK_MUTED : MUTED_TEXT),
-            borderBottom: tab === id ? `2px solid ${isDark ? ON_DARK : INK_TEXT}` : "2px solid transparent",
-            marginBottom: -1
-          }}>{name}</button>
-        ))}
-      </div>
+        <div style={{ display: "flex", gap: 24, borderBottom: `1px solid ${isDark ? SLATE_LINE : PAPER_LINE}`, marginBottom: 28, flexWrap: "wrap" }}>
+          {[["real", "Real Ledger"], ["evaluator", "Campaign Evaluator"], ["modeled", "Modeled Funnel"]].map(([id, name]) => (
+            <button key={id} onClick={() => setTab(id)} style={{
+              background: "none", border: "none", cursor: "pointer", padding: "0 0 12px 0",
+              fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
+              color: tab === id ? (isDark ? ON_DARK : INK_TEXT) : (isDark ? ON_DARK_MUTED : MUTED_TEXT),
+              borderBottom: tab === id ? `2px solid ${isDark ? ON_DARK : INK_TEXT}` : "2px solid transparent",
+              marginBottom: -1
+            }}>{name}</button>
+          ))}
+        </div>
 
-      {tab === "real" && <RealLedger />}
-      {tab === "evaluator" && <CampaignEvaluator />}
-      {tab === "modeled" && <ModeledFunnel />}
+        {tab === "real" && <RealLedger />}
+        {tab === "evaluator" && <CampaignEvaluator />}
+        {tab === "modeled" && <ModeledFunnel />}
+      </div>
     </div>
   );
 }
